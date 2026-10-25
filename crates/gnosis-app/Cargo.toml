@@ -5,6 +5,10 @@ edition.workspace = true
 license.workspace = true
 authors.workspace = true
 
+[lints]
+workspace = true
+
+
 [dependencies]
 gnosis-core = { path = "../gnosis-core" }
 gnosis-markdown = { path = "../gnosis-markdown" }

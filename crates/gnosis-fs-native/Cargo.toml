@@ -1,0 +1,17 @@
+[package]
+name = "gnosis-fs-native"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+gnosis-core = { path = "../gnosis-core" }
+tokio = { workspace = true }
+notify = { workspace = true }
+walkdir = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }

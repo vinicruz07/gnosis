@@ -5,8 +5,19 @@ members = [
     "crates/gnosis-markdown",
     "crates/gnosis-graph",
     "crates/gnosis-plugins",
+    "crates/gnosis-fs-native",
+    "crates/gnosis-fs-web",
     "crates/gnosis-app",
 ]
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+
 
 [workspace.package]
 version = "0.1.0"
