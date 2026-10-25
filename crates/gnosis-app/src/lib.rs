@@ -12,12 +12,14 @@
 
 pub mod editor;
 pub mod fuzzy;
+pub mod graph_view;
 pub mod quick_switcher;
 pub mod state;
 pub mod tabs;
 
 pub use editor::{EditorController, EditorMode, RenderBlockModel};
 pub use fuzzy::{fuzzy_match, FuzzyMatch};
+pub use graph_view::{GraphEdgeVisual, GraphNodeVisual, GraphViewController, PhysicsStatus};
 pub use quick_switcher::{QuickItem, QuickItemType, QuickMode, QuickSwitcherManager};
 pub use state::{AppState, FileTreeEntry, TreeItemModel};
 pub use tabs::{EditorPane, NavigationHistory, SplitDirection, TabItem, TabManager};

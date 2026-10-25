@@ -1,7 +1,7 @@
 //! Ponto de entrada do aplicativo Gnosis Desktop.
 //!
-//! Inicialização do Slint UI com renderizador leve, abas, split view,
-//! Quick Switcher e alternância entre Modo Edição e Modo Leitura com blocos AST.
+//! Inicialização do Slint UI com renderizador leve, abas múltiplas, split view,
+//! Quick Switcher, editor ágil e Canvas do Grafo de Conhecimento 2D com física e Auto-Sleep.
 
 #![forbid(unsafe_code)]
 #![deny(clippy::unwrap_used)]
@@ -9,11 +9,14 @@
 #![deny(clippy::panic)]
 
 use gnosis_app::{
-    AppState, AppWindow, EditorController, EditorMode, EditorPane, QuickItem,
+    AppState, AppWindow, EditorController, EditorMode, EditorPane, GraphEdgeSlint,
+    GraphEdgeVisual, GraphNodeSlint, GraphNodeVisual, GraphViewController, QuickItem,
     QuickItemData, QuickMode, QuickSwitcherManager, RenderBlockData,
     RenderBlockModel, SplitDirection, TabData, TabManager, TreeItemData,
     TreeItemModel,
 };
+use gnosis_graph::model::{EdgeType, KnowledgeGraph, NodeType};
+use gnosis_graph::subgraph::GraphFilterConfig;
 use slint::{ComponentHandle, ModelRc, VecModel};
 use std::sync::{Arc, Mutex};
 use tracing::info;
@@ -74,9 +77,37 @@ fn to_slint_ast_blocks(blocks: &[RenderBlockModel]) -> Vec<RenderBlockData> {
         .collect()
 }
 
+fn to_slint_graph_nodes(nodes: &[GraphNodeVisual]) -> Vec<GraphNodeSlint> {
+    nodes
+        .iter()
+        .map(|n| GraphNodeSlint {
+            id: n.id.as_str().into(),
+            label: n.label.as_str().into(),
+            x: n.x,
+            y: n.y,
+            radius: n.radius,
+            color_hex: n.color_hex.as_str().into(),
+            is_pinned: n.is_pinned,
+        })
+        .collect()
+}
+
+fn to_slint_graph_edges(edges: &[GraphEdgeVisual]) -> Vec<GraphEdgeSlint> {
+    edges
+        .iter()
+        .map(|e| GraphEdgeSlint {
+            source_x: e.source_x,
+            source_y: e.source_y,
+            target_x: e.target_x,
+            target_y: e.target_y,
+            color_hex: e.color_hex.as_str().into(),
+        })
+        .collect()
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();
-    info!("Inicializando Gnosis - Modo Leitura AST & Edição Ágil");
+    info!("Inicializando Gnosis - Canvas do Grafo 2D com Física e Auto-Sleep");
 
     // Instancia janela principal Slint
     let app = AppWindow::new()?;
@@ -128,6 +159,31 @@ fn main() {
         }
     }
 
+    // Inicializa Grafo de Conhecimento com conexões
+    let mut knowledge_graph = KnowledgeGraph::new();
+    knowledge_graph.add_or_update_node("00_Inbox/Ideias Rápidas.md", "Ideias Rápidas", NodeType::Note, None);
+    knowledge_graph.add_or_update_node("01_Projetos/Rust/Gnosis Core.md", "Gnosis Core", NodeType::Note, None);
+    knowledge_graph.add_or_update_node("01_Projetos/Rust/Slint Shell.md", "Slint Shell", NodeType::Note, None);
+    knowledge_graph.add_or_update_node("02_Estudos/Grafos e Física 2D.md", "Grafos e Física", NodeType::Note, None);
+    knowledge_graph.add_or_update_node("03_Arquivo/2026/Planejamento.md", "Planejamento", NodeType::Note, None);
+    knowledge_graph.add_or_update_node("Diário de Bordo.md", "Diário de Bordo", NodeType::Note, None);
+    knowledge_graph.add_or_update_node("#rust", "Rust Tag", NodeType::Tag, None);
+    knowledge_graph.add_or_update_node("#obsidian", "Obsidian Tag", NodeType::Tag, None);
+    knowledge_graph.add_or_update_node("Nota_Fantasma.md", "Nota Fantasma", NodeType::Unresolved, None);
+
+    let _ = knowledge_graph.add_edge("01_Projetos/Rust/Gnosis Core.md", "01_Projetos/Rust/Slint Shell.md", EdgeType::WikiLink, None, 1.0);
+    let _ = knowledge_graph.add_edge("01_Projetos/Rust/Slint Shell.md", "02_Estudos/Grafos e Física 2D.md", EdgeType::WikiLink, None, 1.0);
+    let _ = knowledge_graph.add_edge("01_Projetos/Rust/Gnosis Core.md", "#rust", EdgeType::TagRelation, None, 0.5);
+    let _ = knowledge_graph.add_edge("01_Projetos/Rust/Slint Shell.md", "#rust", EdgeType::TagRelation, None, 0.5);
+    let _ = knowledge_graph.add_edge("00_Inbox/Ideias Rápidas.md", "01_Projetos/Rust/Gnosis Core.md", EdgeType::WikiLink, None, 1.0);
+    let _ = knowledge_graph.add_edge("00_Inbox/Ideias Rápidas.md", "Nota_Fantasma.md", EdgeType::WikiLink, None, 1.0);
+
+    let mut graph_ctrl = GraphViewController::new(knowledge_graph);
+    // Executa alguns passos iniciais de amortecimento
+    for _ in 0..50 {
+        graph_ctrl.step();
+    }
+
     // Configura propriedades iniciais na janela
     app.set_vault_name(state.vault_name.as_str().into());
     app.set_active_note_title("Gnosis Core".into());
@@ -141,6 +197,7 @@ fn main() {
     app.set_can_go_forward(tab_mgr.history.can_go_forward());
     app.set_is_split(false);
     app.set_quick_switcher_open(false);
+    app.set_is_graph_view(false);
 
     let initial_tree = to_slint_tree(&state.visible_tree_items());
     app.set_file_tree(ModelRc::new(VecModel::from(initial_tree)));
@@ -151,11 +208,215 @@ fn main() {
     let initial_ast = to_slint_ast_blocks(&editor_ctrl.generate_render_blocks());
     app.set_ast_blocks(ModelRc::new(VecModel::from(initial_ast)));
 
+    let initial_nodes = to_slint_graph_nodes(&graph_ctrl.get_visual_nodes(400.0, 300.0));
+    let initial_edges = to_slint_graph_edges(&graph_ctrl.get_visual_edges(400.0, 300.0));
+    app.set_graph_nodes(ModelRc::new(VecModel::from(initial_nodes)));
+    app.set_graph_edges(ModelRc::new(VecModel::from(initial_edges)));
+    app.set_graph_is_sleeping(graph_ctrl.is_sleeping());
+
     let state_arc = Arc::new(Mutex::new(state));
     let tab_arc = Arc::new(Mutex::new(tab_mgr));
     let editor_arc = Arc::new(Mutex::new(editor_ctrl));
     let quick_arc = Arc::new(Mutex::new(quick_mgr));
+    let graph_arc = Arc::new(Mutex::new(graph_ctrl));
     let app_weak = app.as_weak();
+
+    // Callback: Alternar Visualização do Grafo de Conhecimento (Ctrl+G)
+    {
+        let app_weak = app_weak.clone();
+        let graph_arc = Arc::clone(&graph_arc);
+        app.on_toggle_graph_view(move || {
+            if let Some(w) = app_weak.upgrade() {
+                let current = w.get_is_graph_view();
+                let next = !current;
+                w.set_is_graph_view(next);
+
+                if next {
+                    if let Ok(mut gc) = graph_arc.lock() {
+                        gc.wake_up();
+                        for _ in 0..20 {
+                            gc.step();
+                        }
+                        let nodes = to_slint_graph_nodes(&gc.get_visual_nodes(400.0, 300.0));
+                        let edges = to_slint_graph_edges(&gc.get_visual_edges(400.0, 300.0));
+                        w.set_graph_nodes(ModelRc::new(VecModel::from(nodes)));
+                        w.set_graph_edges(ModelRc::new(VecModel::from(edges)));
+                        w.set_graph_is_sleeping(gc.is_sleeping());
+                    }
+                }
+            }
+        });
+    }
+
+    // Callback: Clique em nó do Grafo (Abre nota no editor)
+    {
+        let app_weak = app_weak.clone();
+        let tab_arc = Arc::clone(&tab_arc);
+        let editor_arc = Arc::clone(&editor_arc);
+        let state_arc = Arc::clone(&state_arc);
+
+        app.on_graph_node_clicked(move |node_id| {
+            let path = node_id.as_str();
+            let title = path.rsplit('/').next().unwrap_or(path).trim_end_matches(".md");
+
+            let content = format!("# {}\n\nNota aberta a partir do nó do Grafo de Conhecimento.", title);
+
+            if let Ok(mut st) = state_arc.lock() {
+                st.select_note(path, &content);
+            }
+            if let Ok(mut tm) = tab_arc.lock() {
+                tm.open_note(path, title);
+            }
+            if let Ok(mut ed) = editor_arc.lock() {
+                ed.set_content(&content);
+            }
+
+            if let Some(w) = app_weak.upgrade() {
+                w.set_is_graph_view(false);
+                w.set_active_note_title(title.into());
+                w.set_active_note_content(content.as_str().into());
+
+                if let Ok(tm) = tab_arc.lock() {
+                    let tabs = to_slint_tabs(tm.active_pane());
+                    w.set_tabs(ModelRc::new(VecModel::from(tabs)));
+                }
+
+                if let Ok(ed) = editor_arc.lock() {
+                    let ast = to_slint_ast_blocks(&ed.generate_render_blocks());
+                    w.set_ast_blocks(ModelRc::new(VecModel::from(ast)));
+                }
+            }
+        });
+    }
+
+    // Callback: Arrastar nó do Grafo com o mouse
+    {
+        let app_weak = app_weak.clone();
+        let graph_arc = Arc::clone(&graph_arc);
+        app.on_graph_node_dragged(move |id, x, y| {
+            if let Ok(mut gc) = graph_arc.lock() {
+                gc.pin_node(id.as_str(), x, y);
+                gc.step();
+
+                if let Some(w) = app_weak.upgrade() {
+                    let nodes = to_slint_graph_nodes(&gc.get_visual_nodes(400.0, 300.0));
+                    let edges = to_slint_graph_edges(&gc.get_visual_edges(400.0, 300.0));
+                    w.set_graph_nodes(ModelRc::new(VecModel::from(nodes)));
+                    w.set_graph_edges(ModelRc::new(VecModel::from(edges)));
+                    w.set_graph_is_sleeping(gc.is_sleeping());
+                }
+            }
+        });
+    }
+
+    // Callback: Soltar nó do Grafo
+    {
+        let graph_arc = Arc::clone(&graph_arc);
+        app.on_graph_node_released(move |id| {
+            if let Ok(mut gc) = graph_arc.lock() {
+                gc.unpin_node(id.as_str());
+            }
+        });
+    }
+
+    // Callback: Reorganizar / Reiniciar física
+    {
+        let app_weak = app_weak.clone();
+        let graph_arc = Arc::clone(&graph_arc);
+        app.on_graph_restart_physics(move || {
+            if let Ok(mut gc) = graph_arc.lock() {
+                gc.wake_up();
+                for _ in 0..20 {
+                    gc.step();
+                }
+                if let Some(w) = app_weak.upgrade() {
+                    let nodes = to_slint_graph_nodes(&gc.get_visual_nodes(400.0, 300.0));
+                    let edges = to_slint_graph_edges(&gc.get_visual_edges(400.0, 300.0));
+                    w.set_graph_nodes(ModelRc::new(VecModel::from(nodes)));
+                    w.set_graph_edges(ModelRc::new(VecModel::from(edges)));
+                    w.set_graph_is_sleeping(gc.is_sleeping());
+                }
+            }
+        });
+    }
+
+    // Callback: Alternar filtro de órfãos
+    {
+        let app_weak = app_weak.clone();
+        let graph_arc = Arc::clone(&graph_arc);
+        app.on_graph_toggle_hide_orphans(move || {
+            if let Ok(mut gc) = graph_arc.lock() {
+                let mut filter = gc.filter_config.clone();
+                filter.hide_orphans = !filter.hide_orphans;
+                let hide = filter.hide_orphans;
+                gc.update_filters(filter);
+
+                if let Some(w) = app_weak.upgrade() {
+                    w.set_graph_hide_orphans(hide);
+                    let nodes = to_slint_graph_nodes(&gc.get_visual_nodes(400.0, 300.0));
+                    let edges = to_slint_graph_edges(&gc.get_visual_edges(400.0, 300.0));
+                    w.set_graph_nodes(ModelRc::new(VecModel::from(nodes)));
+                    w.set_graph_edges(ModelRc::new(VecModel::from(edges)));
+                }
+            }
+        });
+    }
+
+    // Callback: Alternar filtro de notas não resolvidas (fantasmas)
+    {
+        let app_weak = app_weak.clone();
+        let graph_arc = Arc::clone(&graph_arc);
+        app.on_graph_toggle_hide_unresolved(move || {
+            if let Ok(mut gc) = graph_arc.lock() {
+                let mut filter = gc.filter_config.clone();
+                filter.hide_unresolved = !filter.hide_unresolved;
+                let hide = filter.hide_unresolved;
+                gc.update_filters(filter);
+
+                if let Some(w) = app_weak.upgrade() {
+                    w.set_graph_hide_unresolved(hide);
+                    let nodes = to_slint_graph_nodes(&gc.get_visual_nodes(400.0, 300.0));
+                    let edges = to_slint_graph_edges(&gc.get_visual_edges(400.0, 300.0));
+                    w.set_graph_nodes(ModelRc::new(VecModel::from(nodes)));
+                    w.set_graph_edges(ModelRc::new(VecModel::from(edges)));
+                }
+            }
+        });
+    }
+
+    // Callback: Zoom In do Grafo
+    {
+        let app_weak = app_weak.clone();
+        let graph_arc = Arc::clone(&graph_arc);
+        app.on_graph_zoom_in(move || {
+            if let Ok(mut gc) = graph_arc.lock() {
+                gc.zoom = (gc.zoom + 0.15).min(2.5);
+                if let Some(w) = app_weak.upgrade() {
+                    let nodes = to_slint_graph_nodes(&gc.get_visual_nodes(400.0, 300.0));
+                    let edges = to_slint_graph_edges(&gc.get_visual_edges(400.0, 300.0));
+                    w.set_graph_nodes(ModelRc::new(VecModel::from(nodes)));
+                    w.set_graph_edges(ModelRc::new(VecModel::from(edges)));
+                }
+            }
+        });
+    }
+
+    // Callback: Zoom Out do Grafo
+    {
+        let app_weak = app_weak.clone();
+        let graph_arc = Arc::clone(&graph_arc);
+        app.on_graph_zoom_out(move || {
+            if let Ok(mut gc) = graph_arc.lock() {
+                gc.zoom = (gc.zoom - 0.15).max(0.4);
+                if let Some(w) = app_weak.upgrade() {
+                    let nodes = to_slint_graph_nodes(&gc.get_visual_nodes(400.0, 300.0));
+                    let edges = to_slint_graph_edges(&gc.get_visual_edges(400.0, 300.0));
+                    w.set_graph_nodes(ModelRc::new(VecModel::from(nodes)));
+                    w.set_graph_edges(ModelRc::new(VecModel::from(edges)));
+                }
+            }
+        });
+    }
 
     // Callback: Alternar modo de Edição / Leitura (Ctrl+E)
     {
@@ -209,7 +470,6 @@ fn main() {
         let app_weak = app_weak.clone();
         let editor_arc = Arc::clone(&editor_arc);
         app.on_task_checkbox_toggled(move |_idx| {
-            // Em visualização rica, pode alternar estado da tarefa
             if let Ok(ed) = editor_arc.lock() {
                 let ast = to_slint_ast_blocks(&ed.generate_render_blocks());
                 if let Some(w) = app_weak.upgrade() {
@@ -281,6 +541,7 @@ fn main() {
                 tm.open_note(note_str, title);
 
                 if let Some(w) = app_weak.upgrade() {
+                    w.set_is_graph_view(false);
                     w.set_active_note_title(title.into());
                     w.set_active_note_content(content.as_str().into());
                     w.set_can_go_back(tm.history.can_go_back());
@@ -321,6 +582,7 @@ fn main() {
                         }
 
                         if let Some(w) = app_weak.upgrade() {
+                            w.set_is_graph_view(false);
                             w.set_active_note_title(title.as_str().into());
                             w.set_active_note_content(content.as_str().into());
 
@@ -385,6 +647,7 @@ fn main() {
                     }
 
                     if let Some(w) = app_weak.upgrade() {
+                        w.set_is_graph_view(false);
                         w.set_active_note_title(title.into());
                         w.set_active_note_content(content.as_str().into());
                         w.set_can_go_back(tm.history.can_go_back());
@@ -424,6 +687,7 @@ fn main() {
                     }
 
                     if let Some(w) = app_weak.upgrade() {
+                        w.set_is_graph_view(false);
                         w.set_active_note_title(title.into());
                         w.set_active_note_content(content.as_str().into());
                         w.set_can_go_back(tm.history.can_go_back());
@@ -524,6 +788,7 @@ fn main() {
         let tab_arc = Arc::clone(&tab_arc);
         let state_arc = Arc::clone(&state_arc);
         let editor_arc = Arc::clone(&editor_arc);
+        let graph_arc = Arc::clone(&graph_arc);
 
         app.on_quick_item_clicked(move |idx| {
             let mut action_opt = None;
@@ -556,6 +821,7 @@ fn main() {
                         }
 
                         if let Some(w) = app_weak.upgrade() {
+                            w.set_is_graph_view(false);
                             w.set_active_note_title(title.as_str().into());
                             w.set_active_note_content(content.as_str().into());
 
@@ -572,7 +838,18 @@ fn main() {
                     }
                     gnosis_app::QuickItemType::Command => {
                         info!("Executando comando da paleta: {}", action_id);
-                        if action_id == "cmd_toggle_sidebar" {
+                        if action_id == "cmd_graph" {
+                            if let Some(w) = app_weak.upgrade() {
+                                w.set_is_graph_view(true);
+                                if let Ok(mut gc) = graph_arc.lock() {
+                                    gc.wake_up();
+                                    let nodes = to_slint_graph_nodes(&gc.get_visual_nodes(400.0, 300.0));
+                                    let edges = to_slint_graph_edges(&gc.get_visual_edges(400.0, 300.0));
+                                    w.set_graph_nodes(ModelRc::new(VecModel::from(nodes)));
+                                    w.set_graph_edges(ModelRc::new(VecModel::from(edges)));
+                                }
+                            }
+                        } else if action_id == "cmd_toggle_sidebar" {
                             if let Ok(mut st) = state_arc.lock() {
                                 let col = st.toggle_sidebar();
                                 if let Some(w) = app_weak.upgrade() {
@@ -610,7 +887,7 @@ fn main() {
 
     // Suporte a modo headless para testes e CI
     if std::env::var("GNOSIS_HEADLESS").is_ok() {
-        info!("Modo headless detectado. Inicialização do Editor e Modo Leitura validada.");
+        info!("Modo headless detectado. Inicialização completa com Grafo 2D validada.");
         return Ok(());
     }
 

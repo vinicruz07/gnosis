@@ -1,0 +1,234 @@
+import { Theme } from "theme.slint";
+
+export struct GraphNodeSlint {
+    id: string,
+    label: string,
+    x: float,
+    y: float,
+    radius: float,
+    color_hex: string,
+    is_pinned: bool,
+}
+
+export struct GraphEdgeSlint {
+    source_x: float,
+    source_y: float,
+    target_x: float,
+    target_y: float,
+    color_hex: string,
+}
+
+export component GraphCanvas inherits Rectangle {
+    in property <[GraphNodeSlint]> nodes: [];
+    in property <[GraphEdgeSlint]> edges: [];
+    in property <bool> is_sleeping: false;
+    in property <bool> hide_orphans: false;
+    in property <bool> hide_unresolved: false;
+
+    callback node_clicked(string);
+    callback node_dragged(string, float, float);
+    callback node_released(string);
+    callback restart_physics();
+    callback toggle_hide_orphans();
+    callback toggle_hide_unresolved();
+    callback zoom_in();
+    callback zoom_out();
+
+    background: Theme.background;
+    clip: true;
+
+    // 1. Camada de Arestas Elásticas (Renderizadas via segmentos de Path)
+    for edge in root.edges: Path {
+        stroke: #45475a;
+        stroke-width: 1.5px;
+        MoveTo { x: edge.source_x * 1px; y: edge.source_y * 1px; }
+        LineTo { x: edge.target_x * 1px; y: edge.target_y * 1px; }
+    }
+
+    // 2. Camada de Partículas/Nós (Círculos vetoriais com rótulo)
+    for node in root.nodes: Rectangle {
+        x: (node.x - node.radius) * 1px;
+        y: (node.y - node.radius) * 1px;
+        width: node.radius * 2px;
+        height: node.radius * 2px;
+        border-radius: node.radius * 1px;
+        background: #89b4fa;
+        border-width: node.is_pinned ? 2px : 0px;
+        border-color: #ffffff;
+
+        // Rótulo do nó posicionado abaixo da partícula
+        Text {
+            text: node.label;
+            color: Theme.text_primary;
+            font-size: 11px;
+            font-weight: 600;
+            y: parent.height + 3px;
+            x: (parent.width - self.width) / 2;
+        }
+
+        TouchArea {
+            clicked => {
+                root.node_clicked(node.id);
+            }
+        }
+    }
+
+    // 3. Painel de Controle e Status no Canto Superior Esquerdo
+    Rectangle {
+        x: 14px;
+        y: 14px;
+        height: 34px;
+        background: Theme.sidebar_bg;
+        border-radius: 6px;
+        border-width: 1px;
+        border-color: Theme.border;
+
+        HorizontalLayout {
+            padding-left: 10px;
+            padding-right: 10px;
+            spacing: 8px;
+            alignment: center;
+
+            // Indicador de Auto-Sleep (0% CPU)
+            Rectangle {
+                width: 8px;
+                height: 8px;
+                border-radius: 4px;
+                background: root.is_sleeping ? Theme.text_muted : Theme.success;
+                y: (parent.height - self.height) / 2;
+            }
+
+            Text {
+                text: root.is_sleeping ? "💤 Auto-Sleep (0% CPU)" : "🟢 60 FPS (Física Ativa)";
+                color: root.is_sleeping ? Theme.text_muted : Theme.text_primary;
+                font-size: 11px;
+                font-weight: 600;
+                vertical-alignment: center;
+            }
+
+            Rectangle {
+                width: 1px;
+                height: 16px;
+                background: Theme.border;
+                y: (parent.height - self.height) / 2;
+            }
+
+            // Botão Reorganizar Física
+            Rectangle {
+                width: 24px;
+                height: 24px;
+                border-radius: 4px;
+                background: touch_reheat.has-hover ? Theme.surface_hover : transparent;
+
+                Text {
+                    text: "🔄";
+                    font-size: 11px;
+                    vertical-alignment: center;
+                    horizontal-alignment: center;
+                }
+
+                touch_reheat := TouchArea {
+                    clicked => { root.restart_physics(); }
+                }
+            }
+
+            // Botão Zoom +
+            Rectangle {
+                width: 24px;
+                height: 24px;
+                border-radius: 4px;
+                background: touch_zi.has-hover ? Theme.surface_hover : transparent;
+
+                Text {
+                    text: "➕";
+                    font-size: 10px;
+                    vertical-alignment: center;
+                    horizontal-alignment: center;
+                }
+
+                touch_zi := TouchArea {
+                    clicked => { root.zoom_in(); }
+                }
+            }
+
+            // Botão Zoom -
+            Rectangle {
+                width: 24px;
+                height: 24px;
+                border-radius: 4px;
+                background: touch_zo.has-hover ? Theme.surface_hover : transparent;
+
+                Text {
+                    text: "➖";
+                    font-size: 10px;
+                    vertical-alignment: center;
+                    horizontal-alignment: center;
+                }
+
+                touch_zo := TouchArea {
+                    clicked => { root.zoom_out(); }
+                }
+            }
+        }
+    }
+
+    // 4. Painel de Filtros no Canto Superior Direito
+    Rectangle {
+        x: parent.width - self.width - 14px;
+        y: 14px;
+        height: 34px;
+        background: Theme.sidebar_bg;
+        border-radius: 6px;
+        border-width: 1px;
+        border-color: Theme.border;
+
+        HorizontalLayout {
+            padding-left: 10px;
+            padding-right: 10px;
+            spacing: 8px;
+            alignment: center;
+
+            // Filtro: Ocultar Órfãos
+            Rectangle {
+                padding-left: 6px;
+                padding-right: 6px;
+                height: 22px;
+                border-radius: 4px;
+                background: root.hide_orphans ? Theme.accent : Theme.surface;
+
+                Text {
+                    text: "Órfãos";
+                    color: root.hide_orphans ? #11111b : Theme.text_secondary;
+                    font-size: 11px;
+                    font-weight: 600;
+                    vertical-alignment: center;
+                }
+
+                TouchArea {
+                    clicked => { root.toggle_hide_orphans(); }
+                }
+            }
+
+            // Filtro: Ocultar Fantasmas (Não Resolvidos)
+            Rectangle {
+                padding-left: 6px;
+                padding-right: 6px;
+                height: 22px;
+                border-radius: 4px;
+                background: root.hide_unresolved ? Theme.accent : Theme.surface;
+
+                Text {
+                    text: "Fantasmas";
+                    color: root.hide_unresolved ? #11111b : Theme.text_secondary;
+                    font-size: 11px;
+                    font-weight: 600;
+                    vertical-alignment: center;
+                }
+
+                TouchArea {
+                    clicked => { root.toggle_hide_unresolved(); }
+                }
+            }
+        }
+    }
+}

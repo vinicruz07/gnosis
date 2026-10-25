@@ -4,6 +4,7 @@ import { StatusBar } from "statusbar.slint";
 import { TabBar, TabData } from "tabbar.slint";
 import { QuickSwitcherModal, QuickItemData } from "quick_switcher.slint";
 import { RichViewer, RenderBlockData } from "rich_viewer.slint";
+import { GraphCanvas, GraphNodeSlint, GraphEdgeSlint } from "graph_canvas.slint";
 
 export component AppWindow inherits Window {
     title: "Gnosis";
@@ -23,6 +24,14 @@ export component AppWindow inherits Window {
     in property <string> active_note_content: "# Bem-vindo ao Gnosis\n\nRecompilação de alto desempenho do Obsidian em Rust puro.";
     in property <bool> is_editing: false;
     in property <[RenderBlockData]> ast_blocks: [];
+
+    // Propriedades da Visualização do Grafo 2D
+    in property <bool> is_graph_view: false;
+    in property <[GraphNodeSlint]> graph_nodes: [];
+    in property <[GraphEdgeSlint]> graph_edges: [];
+    in property <bool> graph_is_sleeping: false;
+    in property <bool> graph_hide_orphans: false;
+    in property <bool> graph_hide_unresolved: false;
 
     // Propriedades do Painel Secundário (Split View)
     in property <bool> is_split: false;
@@ -53,10 +62,21 @@ export component AppWindow inherits Window {
     callback new_note_requested();
     callback content_changed(string);
 
-    // Callbacks do Editor e Modo de Visualização
+    // Callbacks do Editor
     callback toggle_editor_mode();
     callback note_text_edited(string);
     callback task_checkbox_toggled(int);
+
+    // Callbacks do Grafo 2D
+    callback toggle_graph_view();
+    callback graph_node_clicked(string);
+    callback graph_node_dragged(string, float, float);
+    callback graph_node_released(string);
+    callback graph_restart_physics();
+    callback graph_toggle_hide_orphans();
+    callback graph_toggle_hide_unresolved();
+    callback graph_zoom_in();
+    callback graph_zoom_out();
 
     // Callbacks de Abas, Split e Histórico
     callback tab_selected(int);
@@ -76,7 +96,7 @@ export component AppWindow inherits Window {
     VerticalLayout {
         spacing: 0px;
 
-        // Área Central (Barra Lateral + Abas + Editor / Split)
+        // Área Central (Barra Lateral + Abas + Editor / Grafo / Split)
         HorizontalLayout {
             vertical-stretch: 1;
             spacing: 0px;
@@ -113,7 +133,7 @@ export component AppWindow inherits Window {
                 }
             }
 
-            // Área Central de Trabalho (Abas no topo + Painel ou Split View)
+            // Área Central de Trabalho (Abas no topo + Conteúdo / Grafo)
             VerticalLayout {
                 horizontal-stretch: 1;
                 spacing: 0px;
@@ -133,8 +153,154 @@ export component AppWindow inherits Window {
                     new_tab => { root.new_tab(); }
                 }
 
-                // Corpo dos Editores (Único ou Lado a Lado se Split)
-                HorizontalLayout {
+                // Barra de Controle Superior do Painel
+                Rectangle {
+                    height: 42px;
+                    background: Theme.background;
+                    border-bottom-width: 1px;
+                    border-color: Theme.border;
+
+                    HorizontalLayout {
+                        padding-left: 16px;
+                        padding-right: 16px;
+                        alignment: space-between;
+
+                        // Título da Nota ou do Grafo
+                        Text {
+                            text: root.is_graph_view ? "🕸️ Grafo de Conhecimento Global" : root.active_note_title;
+                            color: Theme.text_primary;
+                            font-size: 16px;
+                            font-weight: 700;
+                            vertical-alignment: center;
+                        }
+
+                        // Ações Rápidas: Alternar Grafo, Alternar Edição/Leitura e Quick Switcher
+                        HorizontalLayout {
+                            spacing: 8px;
+                            alignment: end;
+
+                            // Botão Alternar Visualização do Grafo (Ctrl+G)
+                            Rectangle {
+                                width: 110px;
+                                height: 28px;
+                                border-radius: 4px;
+                                background: root.is_graph_view ? Theme.surface_active : Theme.surface;
+                                border-width: 1px;
+                                border-color: root.is_graph_view ? Theme.accent : Theme.border;
+                                y: (parent.height - self.height) / 2;
+
+                                HorizontalLayout {
+                                    alignment: center;
+                                    spacing: 6px;
+
+                                    Text {
+                                        text: root.is_graph_view ? "📝 Notas" : "🕸️ Grafo";
+                                        color: root.is_graph_view ? Theme.accent : Theme.text_primary;
+                                        font-size: 11px;
+                                        font-weight: 600;
+                                        vertical-alignment: center;
+                                    }
+
+                                    Text {
+                                        text: "(Ctrl+G)";
+                                        color: Theme.text_muted;
+                                        font-size: 10px;
+                                        vertical-alignment: center;
+                                    }
+                                }
+
+                                TouchArea {
+                                    clicked => { root.toggle_graph_view(); }
+                                }
+                            }
+
+                            // Botão Alternar Edição / Leitura (apenas se não estiver no Grafo)
+                            if (!root.is_graph_view): Rectangle {
+                                width: 120px;
+                                height: 28px;
+                                border-radius: 4px;
+                                background: Theme.surface;
+                                border-width: 1px;
+                                border-color: root.is_editing ? Theme.accent : Theme.border;
+                                y: (parent.height - self.height) / 2;
+
+                                HorizontalLayout {
+                                    alignment: center;
+                                    spacing: 6px;
+
+                                    Text {
+                                        text: root.is_editing ? "✏️ Edição" : "👁️ Leitura";
+                                        color: root.is_editing ? Theme.accent : Theme.text_primary;
+                                        font-size: 11px;
+                                        font-weight: 600;
+                                        vertical-alignment: center;
+                                    }
+
+                                    Text {
+                                        text: "(Ctrl+E)";
+                                        color: Theme.text_muted;
+                                        font-size: 10px;
+                                        vertical-alignment: center;
+                                    }
+                                }
+
+                                TouchArea {
+                                    clicked => { root.toggle_editor_mode(); }
+                                }
+                            }
+
+                            // Botão de Atalho para o Quick Switcher
+                            Rectangle {
+                                width: 110px;
+                                height: 28px;
+                                border-radius: 4px;
+                                background: Theme.surface;
+                                border-width: 1px;
+                                border-color: Theme.border;
+                                y: (parent.height - self.height) / 2;
+
+                                HorizontalLayout {
+                                    padding-left: 8px;
+                                    padding-right: 8px;
+                                    spacing: 6px;
+                                    alignment: center;
+
+                                    Text {
+                                        text: "🔍 Buscar (Ctrl+O)";
+                                        color: Theme.text_muted;
+                                        font-size: 10px;
+                                        vertical-alignment: center;
+                                    }
+                                }
+
+                                TouchArea {
+                                    clicked => { root.open_quick_switcher("files"); }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Corpo Central: Canvas do Grafo 2D OU Editores de Nota
+                if (root.is_graph_view): GraphCanvas {
+                    vertical-stretch: 1;
+                    nodes: root.graph_nodes;
+                    edges: root.graph_edges;
+                    is_sleeping: root.graph_is_sleeping;
+                    hide_orphans: root.graph_hide_orphans;
+                    hide_unresolved: root.graph_hide_unresolved;
+
+                    node_clicked(id) => { root.graph_node_clicked(id); }
+                    node_dragged(id, x, y) => { root.graph_node_dragged(id, x, y); }
+                    node_released(id) => { root.graph_node_released(id); }
+                    restart_physics => { root.graph_restart_physics(); }
+                    toggle_hide_orphans => { root.graph_toggle_hide_orphans(); }
+                    toggle_hide_unresolved => { root.graph_toggle_hide_unresolved(); }
+                    zoom_in => { root.graph_zoom_in(); }
+                    zoom_out => { root.graph_zoom_out(); }
+                }
+
+                if (!root.is_graph_view): HorizontalLayout {
                     vertical-stretch: 1;
                     spacing: 0px;
 
@@ -147,100 +313,6 @@ export component AppWindow inherits Window {
                             padding: 0px;
                             spacing: 0px;
 
-                            // Barra de Controle Superior do Painel
-                            Rectangle {
-                                height: 42px;
-                                background: Theme.background;
-                                border-bottom-width: 1px;
-                                border-color: Theme.border;
-
-                                HorizontalLayout {
-                                    padding-left: 16px;
-                                    padding-right: 16px;
-                                    alignment: space-between;
-
-                                    // Título da Nota
-                                    Text {
-                                        text: root.active_note_title;
-                                        color: Theme.text_primary;
-                                        font-size: 16px;
-                                        font-weight: 700;
-                                        vertical-alignment: center;
-                                    }
-
-                                    // Ações Rápidas: Alternar Modo de Edição / Leitura e Quick Switcher
-                                    HorizontalLayout {
-                                        spacing: 8px;
-                                        alignment: end;
-
-                                        // Botão Alternar Edição / Leitura (Ctrl+E)
-                                        Rectangle {
-                                            width: 130px;
-                                            height: 28px;
-                                            border-radius: 4px;
-                                            background: touch_mode.has-hover ? Theme.surface_hover : Theme.surface;
-                                            border-width: 1px;
-                                            border-color: root.is_editing ? Theme.accent : Theme.border;
-                                            y: (parent.height - self.height) / 2;
-
-                                            HorizontalLayout {
-                                                alignment: center;
-                                                spacing: 6px;
-
-                                                Text {
-                                                    text: root.is_editing ? "✏️ Edição" : "👁️ Leitura";
-                                                    color: root.is_editing ? Theme.accent : Theme.text_primary;
-                                                    font-size: 11px;
-                                                    font-weight: 600;
-                                                    vertical-alignment: center;
-                                                }
-
-                                                Text {
-                                                    text: "(Ctrl+E)";
-                                                    color: Theme.text_muted;
-                                                    font-size: 10px;
-                                                    vertical-alignment: center;
-                                                }
-                                            }
-
-                                            touch_mode := TouchArea {
-                                                clicked => { root.toggle_editor_mode(); }
-                                            }
-                                        }
-
-                                        // Botão de Atalho para o Quick Switcher
-                                        Rectangle {
-                                            width: 120px;
-                                            height: 28px;
-                                            border-radius: 4px;
-                                            background: Theme.surface;
-                                            border-width: 1px;
-                                            border-color: Theme.border;
-                                            y: (parent.height - self.height) / 2;
-
-                                            HorizontalLayout {
-                                                padding-left: 8px;
-                                                padding-right: 8px;
-                                                spacing: 6px;
-                                                alignment: center;
-
-                                                Text {
-                                                    text: "🔍 Buscar (Ctrl+O)";
-                                                    color: Theme.text_muted;
-                                                    font-size: 10px;
-                                                    vertical-alignment: center;
-                                                }
-                                            }
-
-                                            TouchArea {
-                                                clicked => { root.open_quick_switcher("files"); }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-
-                            // Conteúdo: Modo Edição ou Modo Leitura com Blocos Ricos da AST
                             if (root.is_editing): Rectangle {
                                 vertical-stretch: 1;
                                 background: Theme.background;
@@ -279,7 +351,6 @@ export component AppWindow inherits Window {
                         horizontal-stretch: 1;
                         spacing: 0px;
 
-                        // Divisor Central
                         Rectangle {
                             width: 1px;
                             background: Theme.border;
