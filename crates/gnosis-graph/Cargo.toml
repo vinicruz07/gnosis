@@ -1,0 +1,11 @@
+[package]
+name = "gnosis-graph"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+serde.workspace = true
+petgraph.workspace = true
+gnosis-markdown = { path = "../gnosis-markdown" }

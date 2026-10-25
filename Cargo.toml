@@ -1,0 +1,29 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/gnosis-core",
+    "crates/gnosis-markdown",
+    "crates/gnosis-graph",
+    "crates/gnosis-plugins",
+    "crates/gnosis-app",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["Gnosis Team"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/gnosis-org/gnosis"
+
+[workspace.dependencies]
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+serde_yaml = "0.9"
+tokio = { version = "1.38", features = ["full"] }
+thiserror = "1.0"
+tracing = "0.1"
+tracing-subscriber = "0.3"
+notify = "6.1"
+petgraph = "0.6"
+walkdir = "2.5"
+regex = "1.10"

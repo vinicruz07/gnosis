@@ -1,0 +1,34 @@
+# Rust
+/target
+Cargo.lock
+**/*.rs.bk
+*.pdb
+
+# Local Notes & Discussion (do not commit)
+discussion.md
+discution.md
+discussion/
+discution/
+limbo.md
+limbo/
+*.scratch.md
+
+# Operating System & IDE
+.DS_Store
+Thumbs.db
+desktop.ini
+
+.idea/
+.vscode/
+*.sublime-project
+*.sublime-workspace
+
+# Environment & Local Secrets
+.env
+.env.*
+!.env.example
+
+# App local runtime cache / test vaults
+/vault_test/
+/test_vaults/
+*.log

@@ -1,0 +1,15 @@
+[package]
+name = "gnosis-app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+gnosis-core = { path = "../gnosis-core" }
+gnosis-markdown = { path = "../gnosis-markdown" }
+gnosis-graph = { path = "../gnosis-graph" }
+gnosis-plugins = { path = "../gnosis-plugins" }
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
