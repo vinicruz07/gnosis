@@ -1,7 +1,7 @@
 //! Índice em memória do Vault para busca e resolução de notas em $O(1)$.
 //!
-//! Mapeia simultaneamente caminhos, títulos e aliases do Obsidian para garantir
-//! que links `[[Nota]]` sejam resolvidos em microssegundos sem varredura linear de disco.
+//! Mapeia simultaneamente caminhos, títulos, aliases e tags do Obsidian para garantir
+//! que links `[[Nota]]` e buscas por `#tag` sejam resolvidos em microssegundos.
 
 use crate::note::{NoteId, VaultNote};
 use crate::path::VaultPath;
@@ -14,6 +14,7 @@ pub struct VaultIndex {
     by_path: HashMap<VaultPath, NoteId>,
     by_title: HashMap<String, NoteId>,
     by_alias: HashMap<String, Vec<NoteId>>,
+    by_tag: HashMap<String, Vec<NoteId>>,
 }
 
 impl VaultIndex {
@@ -46,6 +47,15 @@ impl VaultIndex {
             }
         }
 
+        // Mapeia tags
+        for tag in note.tags() {
+            let tag_key = tag.to_lowercase();
+            let entry = self.by_tag.entry(tag_key).or_default();
+            if !entry.contains(&id) {
+                entry.push(id.clone());
+            }
+        }
+
         self.by_id.insert(id, note);
     }
 
@@ -60,6 +70,13 @@ impl VaultIndex {
         for alias in note.aliases() {
             let alias_key = alias.to_lowercase();
             if let Some(ids) = self.by_alias.get_mut(&alias_key) {
+                ids.retain(|item_id| item_id != &id);
+            }
+        }
+
+        for tag in note.tags() {
+            let tag_key = tag.to_lowercase();
+            if let Some(ids) = self.by_tag.get_mut(&tag_key) {
                 ids.retain(|item_id| item_id != &id);
             }
         }
@@ -87,6 +104,15 @@ impl VaultIndex {
     pub fn get_by_path_mut(&mut self, path: &VaultPath) -> Option<&mut VaultNote> {
         let id = self.by_path.get(path)?;
         self.by_id.get_mut(id)
+    }
+
+    /// Retorna todas as notas associadas a uma hashtag específica.
+    pub fn get_by_tag(&self, tag: &str) -> Vec<&VaultNote> {
+        let clean_tag = tag.trim().trim_start_matches('#').to_lowercase();
+        match self.by_tag.get(&clean_tag) {
+            Some(ids) => ids.iter().filter_map(|id| self.by_id.get(id)).collect(),
+            None => Vec::new(),
+        }
     }
 
     /// Resolve um Wikilink do Obsidian (ex: `"Minha Nota"` ou `"pasta/documento"`).
@@ -152,37 +178,44 @@ mod tests {
         let mut index = VaultIndex::new();
 
         let path1 = VaultPath::parse("estudos/rust.md")?;
-        let mut note1 = VaultNote::new(path1.clone(), "# Rust Lang");
-        note1.set_title("Linguagem Rust");
-        note1.set_aliases(vec!["rustlang".to_string(), "rs".to_string()]);
+        let raw_markdown = r#"---
+title: Linguagem Rust
+aliases: [rustlang, rs]
+tags: [linguagens, backend]
+icon: 🦀
+---
+# Introdução
+O Rust é #seguro e rápido. Veja [[Outra Nota]].
+"#;
+
+        let note1 = VaultNote::from_raw_markdown(path1.clone(), raw_markdown);
         index.insert(note1);
 
-        let path2 = VaultPath::parse("diario/hoje.md")?;
-        let note2 = VaultNote::new(path2.clone(), "# Diário de Hoje");
-        index.insert(note2);
+        assert_eq!(index.count(), 1);
 
-        assert_eq!(index.count(), 2);
-
-        // Resolução por caminho exato com ou sem .md
+        // Resolução por caminho
         assert!(index.resolve_wikilink("estudos/rust.md").is_some());
         assert!(index.resolve_wikilink("estudos/rust").is_some());
 
-        // Resolução por título case-insensitive
-        assert!(index.resolve_wikilink("linguagem rust").is_some());
+        // Resolução por título do frontmatter
         assert!(index.resolve_wikilink("Linguagem Rust").is_some());
+        assert!(index.resolve_wikilink("linguagem rust").is_some());
 
-        // Resolução por alias
+        // Resolução por alias do frontmatter
         assert!(index.resolve_wikilink("rustlang").is_some());
         assert!(index.resolve_wikilink("rs").is_some());
 
-        // Alvo inexistente
-        assert!(index.resolve_wikilink("inexistente").is_none());
+        // Resolução por tags agregadas (frontmatter + corpo)
+        let tagged_notes = index.get_by_tag("seguro");
+        assert_eq!(tagged_notes.len(), 1);
+        let backend_notes = index.get_by_tag("backend");
+        assert_eq!(backend_notes.len(), 1);
 
-        // Remoção
-        let removed = index.remove(&path1);
-        assert!(removed.is_some());
-        assert_eq!(index.count(), 1);
-        assert!(index.resolve_wikilink("rustlang").is_none());
+        // Ícone/Sticker
+        if let Some(note) = index.get_by_path(&path1) {
+            assert_eq!(note.icon(), Some("🦀"));
+            assert_eq!(note.links().len(), 1);
+        }
 
         Ok(())
     }

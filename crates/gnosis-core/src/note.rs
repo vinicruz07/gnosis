@@ -2,6 +2,7 @@
 
 use crate::buffer::NoteBuffer;
 use crate::path::VaultPath;
+use gnosis_markdown::{ParsedMetadata, WikiLink};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
@@ -45,13 +46,16 @@ pub struct VaultNote {
     path: VaultPath,
     title: String,
     aliases: Vec<String>,
+    tags: Vec<String>,
+    links: Vec<WikiLink>,
+    icon: Option<String>,
     buffer: NoteBuffer,
     is_dirty: bool,
     modified_timestamp_millis: Option<u64>,
 }
 
 impl VaultNote {
-    /// Inicializa uma nova nota a partir de um caminho e conteúdo textual.
+    /// Inicializa uma nova nota básica a partir de um caminho e conteúdo textual.
     pub fn new(path: VaultPath, initial_content: &str) -> Self {
         let id = NoteId::from_path(&path);
         let title = path
@@ -64,7 +68,50 @@ impl VaultNote {
             path,
             title,
             aliases: Vec::new(),
+            tags: Vec::new(),
+            links: Vec::new(),
+            icon: None,
             buffer: NoteBuffer::from_str(initial_content),
+            is_dirty: false,
+            modified_timestamp_millis: None,
+        }
+    }
+
+    /// Construtor inteligente que analisa o texto Markdown e extrai metadados, frontmatter, tags e links.
+    pub fn from_raw_markdown(path: VaultPath, raw_content: &str) -> Self {
+        let id = NoteId::from_path(&path);
+        let parsed = ParsedMetadata::parse(raw_content);
+
+        // Se o frontmatter definir um título explícito, utiliza-o; senão usa o nome do arquivo
+        let title = match &parsed.frontmatter {
+            Some(fm) if fm.title.is_some() => {
+                match &fm.title {
+                    Some(t) => t.clone(),
+                    None => path.file_stem().unwrap_or("Untitled").to_string(),
+                }
+            }
+            _ => path.file_stem().unwrap_or("Untitled").to_string(),
+        };
+
+        let aliases = match &parsed.frontmatter {
+            Some(fm) => fm.aliases.clone(),
+            None => Vec::new(),
+        };
+
+        let icon = match &parsed.frontmatter {
+            Some(fm) => fm.icon.clone(),
+            None => None,
+        };
+
+        Self {
+            id,
+            path,
+            title,
+            aliases,
+            tags: parsed.tags,
+            links: parsed.links,
+            icon,
+            buffer: NoteBuffer::from_str(raw_content),
             is_dirty: false,
             modified_timestamp_millis: None,
         }
@@ -92,7 +139,7 @@ impl VaultNote {
         &self.title
     }
 
-    /// Define o título da nota (ex: obtido do frontmatter YAML).
+    /// Define o título da nota.
     pub fn set_title(&mut self, title: impl Into<String>) {
         self.title = title.into();
     }
@@ -105,6 +152,21 @@ impl VaultNote {
     /// Atualiza a lista de aliases.
     pub fn set_aliases(&mut self, aliases: Vec<String>) {
         self.aliases = aliases;
+    }
+
+    /// Retorna a lista de tags da nota.
+    pub fn tags(&self) -> &[String] {
+        &self.tags
+    }
+
+    /// Retorna os links e embeds contidos na nota.
+    pub fn links(&self) -> &[WikiLink] {
+        &self.links
+    }
+
+    /// Retorna o sticker ou ícone da nota, se houver.
+    pub fn icon(&self) -> Option<&str> {
+        self.icon.as_deref()
     }
 
     /// Retorna uma referência somente leitura ao buffer de texto.

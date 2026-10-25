@@ -18,5 +18,7 @@ notify.workspace = true
 walkdir.workspace = true
 async-trait.workspace = true
 ropey.workspace = true
+gnosis-markdown = { path = "../gnosis-markdown" }
+
 
 
