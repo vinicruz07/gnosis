@@ -1,38 +1,17 @@
 //! Gnosis Graph: Grafo de conhecimento, backlinks e análise de links bidirecionais.
+//!
+//! Diretrizes de Qualidade:
+//! - 100% Rust Seguro (`#![forbid(unsafe_code)]`).
+//! - Zero pânicos em tempo de execução (`clippy::unwrap_used`, `clippy::expect_used`, `clippy::panic`).
+//! - Análise de conexões, notas órfãs e links não resolvidos (notas fantasmas).
 
-use petgraph::graph::{DiGraph, NodeIndex};
-use std::collections::HashMap;
+#![forbid(unsafe_code)]
+#![deny(clippy::unwrap_used)]
+#![deny(clippy::expect_used)]
+#![deny(clippy::panic)]
 
-#[derive(Debug, Clone)]
-pub enum NodeType {
-    Note,
-    Tag,
-    Attachment,
-}
+pub mod error;
+pub mod model;
 
-#[derive(Debug, Clone)]
-pub struct GraphNode {
-    pub id: String,
-    pub title: String,
-    pub node_type: NodeType,
-}
-
-pub struct KnowledgeGraph {
-    graph: DiGraph<GraphNode, ()>,
-    node_indices: HashMap<String, NodeIndex>,
-}
-
-impl Default for KnowledgeGraph {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl KnowledgeGraph {
-    pub fn new() -> Self {
-        Self {
-            graph: DiGraph::new(),
-            node_indices: HashMap::new(),
-        }
-    }
-}
+pub use error::{GraphError, Result};
+pub use model::{EdgeType, GraphEdge, GraphNode, KnowledgeGraph, NodeType};

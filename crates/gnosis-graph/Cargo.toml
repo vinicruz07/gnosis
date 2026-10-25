@@ -10,6 +10,9 @@ workspace = true
 
 
 [dependencies]
-serde.workspace = true
-petgraph.workspace = true
+gnosis-core = { path = "../gnosis-core" }
 gnosis-markdown = { path = "../gnosis-markdown" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+petgraph = { workspace = true }
+thiserror = { workspace = true }
