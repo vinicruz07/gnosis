@@ -13,6 +13,7 @@
 pub mod crypto;
 pub mod error;
 pub mod merkle;
+pub mod transport;
 
 pub use crypto::{
     generate_pairing_code, normalize_pairing_code, CryptoEnvelope, HandshakeChallenge,
@@ -20,3 +21,6 @@ pub use crypto::{
 };
 pub use error::{Result, SyncError};
 pub use merkle::{compute_hash, MerkleNode, VaultDiff, VaultMerkleTree};
+pub use transport::{
+    ByosStore, DirectoryByosStore, HybridRoomSynchronizer, MemoryByosStore, SyncMessage,
+};
