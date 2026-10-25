@@ -16,6 +16,7 @@ pub mod graph_view;
 pub mod quick_switcher;
 pub mod state;
 pub mod tabs;
+pub mod theme;
 
 pub use editor::{EditorController, EditorMode, RenderBlockModel};
 pub use fuzzy::{fuzzy_match, FuzzyMatch};
@@ -23,6 +24,7 @@ pub use graph_view::{GraphEdgeVisual, GraphNodeVisual, GraphViewController, Phys
 pub use quick_switcher::{QuickItem, QuickItemType, QuickMode, QuickSwitcherManager};
 pub use state::{AppState, FileTreeEntry, TreeItemModel};
 pub use tabs::{EditorPane, NavigationHistory, SplitDirection, TabItem, TabManager};
+pub use theme::{ThemeColors, ThemeManager};
 
 // Inclui os módulos e componentes de janela compilados pelo Slint no build.rs
 slint::include_modules!();

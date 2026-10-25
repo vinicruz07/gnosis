@@ -7,6 +7,8 @@ export component StatusBar inherits Rectangle {
     in property <int> word_count: 0;
     in property <int> char_count: 0;
 
+    callback theme_clicked();
+
     height: 28px;
     background: Theme.sidebar_bg;
     border-top-width: 1px;
@@ -57,11 +59,39 @@ export component StatusBar inherits Rectangle {
             }
         }
 
-        // Direita: Métricas da nota ativa (palavras e caracteres)
+        // Direita: Seletor de Tema Místico e Métricas
         HorizontalLayout {
-            spacing: 4px;
+            spacing: 12px;
             alignment: end;
 
+            // Botão Seletor de Tema Místico (Ctrl+Shift+T)
+            Rectangle {
+                padding-left: 6px;
+                padding-right: 6px;
+                height: 20px;
+                border-radius: 4px;
+                background: touch_theme.has-hover ? Theme.surface_hover : transparent;
+                y: (parent.height - self.height) / 2;
+
+                HorizontalLayout {
+                    spacing: 4px;
+                    alignment: center;
+
+                    Text {
+                        text: "✨ " + Theme.active_theme_name;
+                        color: Theme.accent;
+                        font-size: 11px;
+                        font-weight: 600;
+                        vertical-alignment: center;
+                    }
+                }
+
+                touch_theme := TouchArea {
+                    clicked => { root.theme_clicked(); }
+                }
+            }
+
+            // Contador de palavras e caracteres
             Text {
                 text: root.word_count + " palavras  |  " + root.char_count + " caracteres";
                 color: Theme.text_muted;

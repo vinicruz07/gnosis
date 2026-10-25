@@ -1,7 +1,7 @@
 //! Ponto de entrada do aplicativo Gnosis Desktop.
 //!
-//! Inicialização do Slint UI com renderizador leve, abas múltiplas, split view,
-//! Quick Switcher, editor ágil e Canvas do Grafo de Conhecimento 2D com física e Auto-Sleep.
+//! Inicialização do Slint UI com renderizador leve, abas, split view,
+//! Quick Switcher, editor ágil, Grafo 2D e sistema dinâmico de temas místico via TOML.
 
 #![forbid(unsafe_code)]
 #![deny(clippy::unwrap_used)]
@@ -12,14 +12,43 @@ use gnosis_app::{
     AppState, AppWindow, EditorController, EditorMode, EditorPane, GraphEdgeSlint,
     GraphEdgeVisual, GraphNodeSlint, GraphNodeVisual, GraphViewController, QuickItem,
     QuickItemData, QuickMode, QuickSwitcherManager, RenderBlockData,
-    RenderBlockModel, SplitDirection, TabData, TabManager, TreeItemData,
-    TreeItemModel,
+    RenderBlockModel, SplitDirection, TabData, TabManager, Theme, ThemeColors,
+    ThemeManager, TreeItemData, TreeItemModel,
 };
 use gnosis_graph::model::{EdgeType, KnowledgeGraph, NodeType};
-use gnosis_graph::subgraph::GraphFilterConfig;
 use slint::{ComponentHandle, ModelRc, VecModel};
 use std::sync::{Arc, Mutex};
 use tracing::info;
+
+fn parse_color(hex: &str) -> slint::Color {
+    let clean = hex.trim_start_matches('#');
+    if clean.len() == 6 {
+        let r = u8::from_str_radix(&clean[0..2], 16).unwrap_or(0);
+        let g = u8::from_str_radix(&clean[2..4], 16).unwrap_or(0);
+        let b = u8::from_str_radix(&clean[4..6], 16).unwrap_or(0);
+        slint::Color::from_argb_u8(255, r, g, b)
+    } else {
+        slint::Color::from_argb_u8(255, 30, 30, 46)
+    }
+}
+
+fn apply_theme_to_slint(app: &AppWindow, theme: &ThemeColors) {
+    let slint_theme = app.global::<Theme>();
+    slint_theme.set_active_theme_name(theme.name.as_str().into());
+    slint_theme.set_background(parse_color(&theme.background));
+    slint_theme.set_sidebar_bg(parse_color(&theme.sidebar_bg));
+    slint_theme.set_surface(parse_color(&theme.surface));
+    slint_theme.set_surface_hover(parse_color(&theme.surface_hover));
+    slint_theme.set_surface_active(parse_color(&theme.surface_active));
+    slint_theme.set_text_primary(parse_color(&theme.text_primary));
+    slint_theme.set_text_secondary(parse_color(&theme.text_secondary));
+    slint_theme.set_text_muted(parse_color(&theme.text_muted));
+    slint_theme.set_accent(parse_color(&theme.accent));
+    slint_theme.set_border(parse_color(&theme.border));
+    slint_theme.set_success(parse_color(&theme.success));
+    slint_theme.set_warning(parse_color(&theme.warning));
+    slint_theme.set_danger(parse_color(&theme.danger));
+}
 
 fn to_slint_tree(items: &[TreeItemModel]) -> Vec<TreeItemData> {
     items
@@ -107,10 +136,15 @@ fn to_slint_graph_edges(edges: &[GraphEdgeVisual]) -> Vec<GraphEdgeSlint> {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();
-    info!("Inicializando Gnosis - Canvas do Grafo 2D com Física e Auto-Sleep");
+    info!("Inicializando Gnosis - Temas Místicos via TOML (Abyss, Aether, Arcana, Boreas)");
 
     // Instancia janela principal Slint
     let app = AppWindow::new()?;
+
+    // Inicializa gerenciador de temas com estética mística
+    let mut theme_mgr = ThemeManager::new();
+    let initial_theme = theme_mgr.active_theme().clone();
+    apply_theme_to_slint(&app, &initial_theme);
 
     // Inicializa estado do Vault e árvore de notas
     let mut state = AppState::new("Meu Vault", "vault");
@@ -125,23 +159,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     state.populate_from_paths(initial_paths);
 
     // Conteúdo demonstrativo rico com múltiplos blocos AST
-    let sample_markdown = r#"# Gnosis Core & Slint Shell
-Recompilação de alto desempenho do Obsidian em Rust puro para hardware legado.
+    let sample_markdown = r#"# Gnosis Core & Temas Filosóficos
+Recompilação de alto desempenho do Obsidian em Rust puro com temas conceituais:
+- **Abyss**: O vazio insondável e o silêncio primordial para introspecção.
+- **Aether**: O quinto elemento etéreo de luz translúcida e pensamento puro.
+- **Arcana**: Os mistérios herméticos e a alquimia da mente em púrpura.
+- **Boreas**: A serenidade gélida do vento boreal límpido.
 
 ```rust
 fn main() {
-    println!("Gnosis: 60 FPS com menos de 25MB de RAM");
+    println!("Gnosis: Alternância dinâmica de temas sem reiniciar!");
 }
 ```
 
-> [!NOTE] Arquitetura Desacoplada
-> O motor suporta Desktop nativo, Modo Portable em pendrives e Web via WebAssembly.
-
-- [x] Árvore de notas com Ropey e VFS atômico
-- [x] Grafo de conhecimento com física 2D e Auto-Sleep (0% CPU)
-- [ ] Renderizador matemático com Typst em vetor
-
-> "A simplicidade é o último grau de sofisticação." — Leonardo da Vinci
+> [!NOTE] Design Tokens Dinâmicos
+> Pressione `Ctrl+Shift+T` ou clique no selo de tema na barra de status para alternar.
 "#;
 
     // Inicializa gerenciador de abas
@@ -179,7 +211,6 @@ fn main() {
     let _ = knowledge_graph.add_edge("00_Inbox/Ideias Rápidas.md", "Nota_Fantasma.md", EdgeType::WikiLink, None, 1.0);
 
     let mut graph_ctrl = GraphViewController::new(knowledge_graph);
-    // Executa alguns passos iniciais de amortecimento
     for _ in 0..50 {
         graph_ctrl.step();
     }
@@ -219,7 +250,24 @@ fn main() {
     let editor_arc = Arc::new(Mutex::new(editor_ctrl));
     let quick_arc = Arc::new(Mutex::new(quick_mgr));
     let graph_arc = Arc::new(Mutex::new(graph_ctrl));
+    let theme_arc = Arc::new(Mutex::new(theme_mgr));
     let app_weak = app.as_weak();
+
+    // Callback: Alternar Tema Místico em Tempo Real (Ctrl+Shift+T ou clique na StatusBar)
+    {
+        let app_weak = app_weak.clone();
+        let theme_arc = Arc::clone(&theme_arc);
+        app.on_cycle_theme(move || {
+            if let Ok(mut tm) = theme_arc.lock() {
+                let next = tm.cycle_next().clone();
+                info!("Tema alternado com sucesso para: {} ({})", next.name, next.description);
+
+                if let Some(w) = app_weak.upgrade() {
+                    apply_theme_to_slint(&w, &next);
+                }
+            }
+        });
+    }
 
     // Callback: Alternar Visualização do Grafo de Conhecimento (Ctrl+G)
     {
@@ -789,6 +837,7 @@ fn main() {
         let state_arc = Arc::clone(&state_arc);
         let editor_arc = Arc::clone(&editor_arc);
         let graph_arc = Arc::clone(&graph_arc);
+        let theme_arc = Arc::clone(&theme_arc);
 
         app.on_quick_item_clicked(move |idx| {
             let mut action_opt = None;
@@ -856,6 +905,13 @@ fn main() {
                                     w.set_sidebar_collapsed(col);
                                 }
                             }
+                        } else if action_id == "cmd_toggle_theme" {
+                            if let Ok(mut tm) = theme_arc.lock() {
+                                let next = tm.cycle_next().clone();
+                                if let Some(w) = app_weak.upgrade() {
+                                    apply_theme_to_slint(&w, &next);
+                                }
+                            }
                         }
                     }
                     _ => {}
@@ -887,7 +943,7 @@ fn main() {
 
     // Suporte a modo headless para testes e CI
     if std::env::var("GNOSIS_HEADLESS").is_ok() {
-        info!("Modo headless detectado. Inicialização completa com Grafo 2D validada.");
+        info!("Modo headless detectado. Inicialização completa com Temas Místicos validada.");
         return Ok(());
     }
 

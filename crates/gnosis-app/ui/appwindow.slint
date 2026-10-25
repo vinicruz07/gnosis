@@ -86,6 +86,9 @@ export component AppWindow inherits Window {
     callback toggle_split();
     callback new_tab();
 
+    // Callbacks do Tema
+    callback cycle_theme();
+
     // Callbacks do Quick Switcher
     callback open_quick_switcher(string);
     callback quick_query_changed(string);
@@ -406,6 +409,7 @@ export component AppWindow inherits Window {
             sync_color: root.sync_color;
             word_count: root.word_count;
             char_count: root.char_count;
+            theme_clicked => { root.cycle_theme(); }
         }
     }
 
