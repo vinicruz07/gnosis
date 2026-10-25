@@ -4,7 +4,7 @@
 //! - 100% Rust Seguro (`#![forbid(unsafe_code)]`).
 //! - Zero pânicos em tempo de execução (`clippy::unwrap_used`, `clippy::expect_used`, `clippy::panic`).
 //! - Escrita atômica em disco para proteção contra falhas e quedas de energia.
-//! - Varredura multithreaded de Vaults com calibração de paralelismo para hardware de 2015-.
+//! - Varredura multithreaded e monitoramento em tempo real com [`notify`].
 
 #![forbid(unsafe_code)]
 #![deny(clippy::unwrap_used)]
@@ -15,8 +15,10 @@ pub mod error;
 pub mod paths;
 pub mod provider;
 pub mod scanner;
+pub mod watcher;
 
 pub use error::{NativeFsError, Result};
 pub use paths::{AppMode, StoragePaths};
 pub use provider::NativeFileSystem;
 pub use scanner::{AttachmentInfo, AttachmentKind, ScanReport, VaultScanner};
+pub use watcher::{VaultChangeEvent, VaultFileWatcher};
