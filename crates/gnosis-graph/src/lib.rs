@@ -12,6 +12,10 @@
 
 pub mod error;
 pub mod model;
+pub mod physics;
+pub mod subgraph;
 
 pub use error::{GraphError, Result};
 pub use model::{EdgeType, GraphEdge, GraphNode, KnowledgeGraph, NodeType};
+pub use physics::{GraphPhysicsSimulator, ParticleNode, PhysicsConfig, Point2D};
+pub use subgraph::{GraphFilterConfig, SubgraphManager};
