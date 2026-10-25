@@ -154,6 +154,14 @@ impl VaultPath {
         let combined = format!("{}/{}", self.inner, subpath.as_ref());
         Self::parse(combined)
     }
+
+    /// Retorna o caminho canônico padrão para pasta de anexos (`attachments`).
+    #[inline]
+    pub fn default_attachments() -> Self {
+        Self {
+            inner: "attachments".to_string(),
+        }
+    }
 }
 
 impl fmt::Debug for VaultPath {

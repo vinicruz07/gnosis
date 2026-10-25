@@ -11,6 +11,7 @@
 #![deny(clippy::panic)]
 
 pub mod buffer;
+pub mod config;
 pub mod error;
 pub mod index;
 pub mod note;
@@ -20,6 +21,7 @@ pub mod vfs;
 pub mod watcher;
 
 pub use buffer::NoteBuffer;
+pub use config::{VaultConfig, GNOSIS_CONFIG_PATH, OBSIDIAN_WORKSPACE_PATH};
 pub use error::{CoreError, Result};
 pub use index::VaultIndex;
 pub use note::{NoteId, VaultNote};

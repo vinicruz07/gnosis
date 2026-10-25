@@ -62,3 +62,9 @@ impl From<std::string::FromUtf8Error> for CoreError {
         Self::Utf8Error(err.to_string())
     }
 }
+
+impl From<serde_json::Error> for CoreError {
+    fn from(err: serde_json::Error) -> Self {
+        Self::Serialization(err.to_string())
+    }
+}
