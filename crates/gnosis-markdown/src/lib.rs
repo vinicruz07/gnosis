@@ -1,4 +1,4 @@
-//! Gnosis Markdown: Parser e extrator puro de Wikilinks, tags, embeds e frontmatter YAML.
+//! Gnosis Markdown: Parser e extrator puro de Wikilinks, tags, embeds, frontmatter e blocos AST.
 //!
 //! Diretrizes de Qualidade:
 //! - 100% Rust Seguro (`#![forbid(unsafe_code)]`).
@@ -10,12 +10,16 @@
 #![deny(clippy::expect_used)]
 #![deny(clippy::panic)]
 
+pub mod ast;
+pub mod block_parser;
 pub mod error;
 pub mod frontmatter;
 pub mod parser;
 pub mod tag;
 pub mod wikilink;
 
+pub use ast::{CalloutKind, MarkdownBlock, MarkdownDoc, TaskItem};
+pub use block_parser::{parse_blocks, parse_document};
 pub use error::{MarkdownError, Result};
 pub use frontmatter::{parse_frontmatter, Frontmatter};
 pub use parser::ParsedMetadata;
