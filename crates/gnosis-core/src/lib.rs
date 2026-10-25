@@ -10,13 +10,19 @@
 #![deny(clippy::expect_used)]
 #![deny(clippy::panic)]
 
+pub mod buffer;
 pub mod error;
+pub mod index;
+pub mod note;
 pub mod path;
 pub mod vault;
 pub mod vfs;
 pub mod watcher;
 
+pub use buffer::NoteBuffer;
 pub use error::{CoreError, Result};
+pub use index::VaultIndex;
+pub use note::{NoteId, VaultNote};
 pub use path::VaultPath;
 pub use vault::Vault;
 pub use vfs::{FileMetadata, FileSystemProvider, MemoryFileSystem};

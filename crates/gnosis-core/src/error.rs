@@ -19,6 +19,10 @@ pub enum CoreError {
     #[error("Caminho do Vault inválido: '{0}' (motivo: {1})")]
     InvalidPath(String, &'static str),
 
+    #[error("Índice fora dos limites do buffer: posição {0}, tamanho total {1}")]
+    IndexOutOfBounds(usize, usize),
+
+
     #[error("Recurso não encontrado no Vault: '{0}'")]
     NotFound(String),
 
