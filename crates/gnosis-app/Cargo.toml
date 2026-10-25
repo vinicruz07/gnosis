@@ -8,12 +8,19 @@ authors.workspace = true
 [lints]
 workspace = true
 
-
 [dependencies]
 gnosis-core = { path = "../gnosis-core" }
 gnosis-markdown = { path = "../gnosis-markdown" }
 gnosis-graph = { path = "../gnosis-graph" }
+gnosis-fs-native = { path = "../gnosis-fs-native" }
+gnosis-sync = { path = "../gnosis-sync" }
 gnosis-plugins = { path = "../gnosis-plugins" }
+slint.workspace = true
 tokio.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[build-dependencies]
+slint-build.workspace = true

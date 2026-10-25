@@ -1,0 +1,124 @@
+import { Theme } from "theme.slint";
+import { Sidebar, TreeItemData } from "sidebar.slint";
+import { StatusBar } from "statusbar.slint";
+
+export component AppWindow inherits Window {
+    title: "Gnosis";
+    preferred-width: 1024px;
+    preferred-height: 700px;
+    min-width: 640px;
+    min-height: 400px;
+    background: Theme.background;
+
+    // Propriedades expostas para o Rust
+    in property <string> vault_name: "Meu Vault";
+    in property <string> active_note_title: "Boas-vindas ao Gnosis";
+    in property <string> active_note_content: "# Bem-vindo ao Gnosis\n\nRecompilação de alto desempenho do Obsidian em Rust puro.";
+    in property <[TreeItemData]> file_tree: [];
+    in-out property <bool> sidebar_collapsed: false;
+    in property <string> sync_status: "Sincronizado (Local)";
+    in property <color> sync_color: Theme.success;
+    in property <int> word_count: 14;
+    in property <int> char_count: 85;
+
+    // Callbacks para eventos do usuário
+    callback note_selected(string);
+    callback folder_toggled(string);
+    callback toggle_sidebar();
+    callback new_note_requested();
+    callback content_changed(string);
+
+    VerticalLayout {
+        spacing: 0px;
+
+        // Área Central (Barra Lateral + Editor / Conteúdo)
+        HorizontalLayout {
+            vertical-stretch: 1;
+            spacing: 0px;
+
+            // Barra Lateral de Arquivos
+            Sidebar {
+                vault_title: root.vault_name;
+                items: root.file_tree;
+                is_collapsed: root.sidebar_collapsed;
+
+                note_clicked(path) => { root.note_selected(path); }
+                folder_toggled(path) => { root.folder_toggled(path); }
+                toggle_sidebar => { root.toggle_sidebar(); }
+                new_note_requested => { root.new_note_requested(); }
+            }
+
+            // Botão de reabertura da barra lateral se estiver recolhida
+            if (root.sidebar_collapsed): Rectangle {
+                width: 28px;
+                background: Theme.sidebar_bg;
+                border-right-width: 1px;
+                border-color: Theme.border;
+
+                Text {
+                    text: "▶";
+                    color: Theme.text_muted;
+                    font-size: 11px;
+                    vertical-alignment: center;
+                    horizontal-alignment: center;
+                }
+
+                TouchArea {
+                    clicked => { root.toggle_sidebar(); }
+                }
+            }
+
+            // Painel Central (Editor / Visualização)
+            Rectangle {
+                horizontal-stretch: 1;
+                background: Theme.background;
+
+                VerticalLayout {
+                    padding: 16px;
+                    spacing: 12px;
+
+                    // Cabeçalho da Nota Ativa
+                    HorizontalLayout {
+                        height: 32px;
+                        alignment: space-between;
+
+                        Text {
+                            text: root.active_note_title;
+                            color: Theme.text_primary;
+                            font-size: 18px;
+                            font-weight: 700;
+                            vertical-alignment: center;
+                        }
+                    }
+
+                    // Divisor
+                    Rectangle {
+                        height: 1px;
+                        background: Theme.border;
+                    }
+
+                    // Prévia / Leitura do Conteúdo
+                    Flickable {
+                        vertical-stretch: 1;
+
+                        Text {
+                            text: root.active_note_content;
+                            color: Theme.text_secondary;
+                            font-size: 14px;
+                            wrap: word-wrap;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Barra de Status Inferior
+        StatusBar {
+            vault_name: root.vault_name;
+            sync_status: root.sync_status;
+            sync_color: root.sync_color;
+            word_count: root.word_count;
+            char_count: root.char_count;
+        }
+    }
+}

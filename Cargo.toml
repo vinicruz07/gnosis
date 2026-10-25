@@ -45,5 +45,5 @@ chacha20poly1305 = "0.10"
 argon2 = "0.5"
 rand = "0.8"
 yrs = "0.18"
-
-
+slint = { version = "1.8", default-features = false, features = ["compat-1-2", "backend-default", "renderer-femtovg", "renderer-software"] }
+slint-build = "1.8"

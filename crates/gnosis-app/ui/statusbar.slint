@@ -1,0 +1,73 @@
+import { Theme } from "theme.slint";
+
+export component StatusBar inherits Rectangle {
+    in property <string> vault_name: "Meu Vault";
+    in property <string> sync_status: "Sincronizado (Local)";
+    in property <color> sync_color: Theme.success;
+    in property <int> word_count: 0;
+    in property <int> char_count: 0;
+
+    height: 28px;
+    background: Theme.sidebar_bg;
+    border-top-width: 1px;
+    border-color: Theme.border;
+
+    HorizontalLayout {
+        padding-left: 12px;
+        padding-right: 12px;
+        alignment: space-between;
+
+        // Esquerda: Identificador do Vault
+        HorizontalLayout {
+            spacing: 6px;
+            alignment: start;
+
+            Text {
+                text: "📁";
+                font-size: 11px;
+                vertical-alignment: center;
+            }
+
+            Text {
+                text: root.vault_name;
+                color: Theme.text_secondary;
+                font-size: 11px;
+                vertical-alignment: center;
+            }
+        }
+
+        // Centro: Status da Sincronização P2P / BYOS
+        HorizontalLayout {
+            spacing: 6px;
+            alignment: center;
+
+            Rectangle {
+                width: 8px;
+                height: 8px;
+                border-radius: 4px;
+                background: root.sync_color;
+                y: (parent.height - self.height) / 2;
+            }
+
+            Text {
+                text: root.sync_status;
+                color: Theme.text_muted;
+                font-size: 11px;
+                vertical-alignment: center;
+            }
+        }
+
+        // Direita: Métricas da nota ativa (palavras e caracteres)
+        HorizontalLayout {
+            spacing: 4px;
+            alignment: end;
+
+            Text {
+                text: root.word_count + " palavras  |  " + root.char_count + " caracteres";
+                color: Theme.text_muted;
+                font-size: 11px;
+                vertical-alignment: center;
+            }
+        }
+    }
+}

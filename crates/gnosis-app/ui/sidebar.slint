@@ -1,0 +1,152 @@
+import { Theme } from "theme.slint";
+
+export struct TreeItemData {
+    id: string,
+    name: string,
+    path: string,
+    is_folder: bool,
+    is_expanded: bool,
+    indent_level: int,
+    is_active: bool,
+}
+
+export component Sidebar inherits Rectangle {
+    in property <string> vault_title: "Meu Vault";
+    in property <[TreeItemData]> items: [];
+    in property <bool> is_collapsed: false;
+
+    callback note_clicked(string);
+    callback folder_toggled(string);
+    callback toggle_sidebar();
+    callback new_note_requested();
+
+    background: Theme.sidebar_bg;
+    border-right-width: 1px;
+    border-color: Theme.border;
+
+    width: root.is_collapsed ? 0px : 240px;
+    animate width { duration: 150ms; easing: ease-out; }
+
+    VerticalLayout {
+        padding: 8px;
+        spacing: 6px;
+
+        // Cabeçalho da Barra Lateral
+        HorizontalLayout {
+            height: 28px;
+            alignment: space-between;
+
+            HorizontalLayout {
+                spacing: 6px;
+                alignment: start;
+
+                Text {
+                    text: root.vault_title;
+                    color: Theme.text_primary;
+                    font-size: 13px;
+                    font-weight: 600;
+                    vertical-alignment: center;
+                }
+            }
+
+            HorizontalLayout {
+                spacing: 4px;
+                alignment: end;
+
+                // Botão Nova Nota
+                Rectangle {
+                    width: 24px;
+                    height: 24px;
+                    border-radius: 4px;
+                    background: touch_new.has-hover ? Theme.surface_hover : transparent;
+
+                    Text {
+                        text: "➕";
+                        font-size: 10px;
+                        vertical-alignment: center;
+                        horizontal-alignment: center;
+                    }
+
+                    touch_new := TouchArea {
+                        clicked => { root.new_note_requested(); }
+                    }
+                }
+
+                // Botão Recolher Barra Lateral
+                Rectangle {
+                    width: 24px;
+                    height: 24px;
+                    border-radius: 4px;
+                    background: touch_collapse.has-hover ? Theme.surface_hover : transparent;
+
+                    Text {
+                        text: "◀";
+                        color: Theme.text_muted;
+                        font-size: 10px;
+                        vertical-alignment: center;
+                        horizontal-alignment: center;
+                    }
+
+                    touch_collapse := TouchArea {
+                        clicked => { root.toggle_sidebar(); }
+                    }
+                }
+            }
+        }
+
+        // Divisor sutil
+        Rectangle {
+            height: 1px;
+            background: Theme.border;
+        }
+
+        // Lista de Arquivos e Pastas
+        Flickable {
+            vertical-stretch: 1;
+
+            VerticalLayout {
+                spacing: 2px;
+                alignment: start;
+
+                for item in root.items: Rectangle {
+                    height: 26px;
+                    border-radius: 4px;
+                    background: item.is_active ? Theme.surface_active : (touch_item.has-hover ? Theme.surface_hover : transparent);
+
+                    HorizontalLayout {
+                        padding-left: item.indent_level * 14px + 6px;
+                        padding-right: 6px;
+                        spacing: 6px;
+                        alignment: start;
+
+                        // Ícone Pasta ou Nota
+                        Text {
+                            text: item.is_folder ? (item.is_expanded ? "📂" : "📁") : "📄";
+                            font-size: 11px;
+                            vertical-alignment: center;
+                        }
+
+                        // Nome do Arquivo / Pasta
+                        Text {
+                            text: item.name;
+                            color: item.is_active ? Theme.accent : Theme.text_primary;
+                            font-size: 12px;
+                            vertical-alignment: center;
+                            overflow: elide;
+                        }
+                    }
+
+                    touch_item := TouchArea {
+                        clicked => {
+                            if (item.is_folder) {
+                                root.folder_toggled(item.path);
+                            } else {
+                                root.note_clicked(item.path);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
