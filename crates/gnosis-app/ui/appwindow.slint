@@ -2,6 +2,7 @@ import { Theme } from "theme.slint";
 import { Sidebar, TreeItemData } from "sidebar.slint";
 import { StatusBar } from "statusbar.slint";
 import { TabBar, TabData } from "tabbar.slint";
+import { QuickSwitcherModal, QuickItemData } from "quick_switcher.slint";
 
 export component AppWindow inherits Window {
     title: "Gnosis";
@@ -30,6 +31,12 @@ export component AppWindow inherits Window {
     in property <bool> can_go_back: false;
     in property <bool> can_go_forward: false;
 
+    // Propriedades do Quick Switcher / Paleta de Comandos
+    in property <bool> quick_switcher_open: false;
+    in property <string> quick_switcher_placeholder: "Digite para buscar uma nota (Ctrl+O)...";
+    in property <[QuickItemData]> quick_items: [];
+    in property <int> quick_selected_index: 0;
+
     // Propriedades da Barra de Status
     in property <string> sync_status: "Sincronizado (Local)";
     in property <color> sync_color: Theme.success;
@@ -51,6 +58,13 @@ export component AppWindow inherits Window {
     callback toggle_split();
     callback new_tab();
 
+    // Callbacks do Quick Switcher
+    callback open_quick_switcher(string);
+    callback quick_query_changed(string);
+    callback quick_item_clicked(int);
+    callback quick_close_requested();
+
+    // Layout Principal
     VerticalLayout {
         spacing: 0px;
 
@@ -136,6 +150,34 @@ export component AppWindow inherits Window {
                                     font-weight: 700;
                                     vertical-alignment: center;
                                 }
+
+                                // Botão de Atalho para o Quick Switcher no cabeçalho
+                                Rectangle {
+                                    width: 120px;
+                                    height: 26px;
+                                    border-radius: 4px;
+                                    background: Theme.surface;
+                                    border-width: 1px;
+                                    border-color: Theme.border;
+
+                                    HorizontalLayout {
+                                        padding-left: 8px;
+                                        padding-right: 8px;
+                                        spacing: 6px;
+                                        alignment: center;
+
+                                        Text {
+                                            text: "🔍 Buscar (Ctrl+O)";
+                                            color: Theme.text_muted;
+                                            font-size: 10px;
+                                            vertical-alignment: center;
+                                        }
+                                    }
+
+                                    TouchArea {
+                                        clicked => { root.open_quick_switcher("files"); }
+                                    }
+                                }
                             }
 
                             Rectangle {
@@ -218,5 +260,17 @@ export component AppWindow inherits Window {
             word_count: root.word_count;
             char_count: root.char_count;
         }
+    }
+
+    // Modal Suspenso Flutuante (Quick Switcher e Paleta de Comandos)
+    QuickSwitcherModal {
+        is_open: root.quick_switcher_open;
+        placeholder_text: root.quick_switcher_placeholder;
+        items: root.quick_items;
+        selected_index: root.quick_selected_index;
+
+        query_changed(q) => { root.quick_query_changed(q); }
+        item_clicked(idx) => { root.quick_item_clicked(idx); }
+        close_requested => { root.quick_close_requested(); }
     }
 }

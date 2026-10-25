@@ -1,6 +1,6 @@
 //! Ponto de entrada do aplicativo Gnosis Desktop.
 //!
-//! Inicialização do Slint UI com renderizador leve, gerenciador de abas múltiplas e split view.
+//! Inicialização do Slint UI com renderizador leve, abas múltiplas, split views e Quick Switcher (Ctrl+O).
 
 #![forbid(unsafe_code)]
 #![deny(clippy::unwrap_used)]
@@ -8,7 +8,8 @@
 #![deny(clippy::panic)]
 
 use gnosis_app::{
-    AppState, AppWindow, EditorPane, SplitDirection, TabData, TabManager, TreeItemData,
+    AppState, AppWindow, EditorPane, QuickItem, QuickItemData, QuickMode,
+    QuickSwitcherManager, SplitDirection, TabData, TabManager, TreeItemData,
     TreeItemModel,
 };
 use slint::{ComponentHandle, ModelRc, VecModel};
@@ -45,34 +46,57 @@ fn to_slint_tabs(pane: &EditorPane) -> Vec<TabData> {
         .collect()
 }
 
+fn to_slint_quick_items(items: &[QuickItem], selected_idx: usize) -> Vec<QuickItemData> {
+    items
+        .iter()
+        .enumerate()
+        .map(|(idx, item)| QuickItemData {
+            id: item.id.as_str().into(),
+            title: item.title.as_str().into(),
+            subtitle: item.subtitle.as_str().into(),
+            icon: item.item_type.icon().into(),
+            is_selected: idx == selected_idx,
+        })
+        .collect()
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();
-    info!("Inicializando Gnosis - Shell com Gerenciador de Abas e Split View");
+    info!("Inicializando Gnosis - Quick Switcher (Ctrl+O) & Paleta de Comandos");
 
     // Instancia janela principal Slint
     let app = AppWindow::new()?;
 
-    // Inicializa estado do Vault e árvore de diretórios
+    // Inicializa estado do Vault e árvore de notas
     let mut state = AppState::new("Meu Vault", "vault");
-    state.populate_from_paths([
+    let initial_paths = [
         "00_Inbox/Ideias Rápidas.md",
         "01_Projetos/Rust/Gnosis Core.md",
         "01_Projetos/Rust/Slint Shell.md",
         "02_Estudos/Grafos e Física 2D.md",
         "03_Arquivo/2026/Planejamento.md",
         "Diário de Bordo.md",
-    ]);
+    ];
+    state.populate_from_paths(initial_paths);
 
-    // Inicializa gerenciador de abas e histórico
+    // Inicializa gerenciador de abas
     let mut tab_mgr = TabManager::new();
     tab_mgr.open_note("00_Inbox/Ideias Rápidas.md", "Ideias Rápidas");
     tab_mgr.open_note("01_Projetos/Rust/Gnosis Core.md", "Gnosis Core");
 
-    // Configura propriedades iniciais na interface Slint
+    // Inicializa Quick Switcher com as notas catalogadas
+    let mut quick_mgr = QuickSwitcherManager::new();
+    for entry in &state.entries {
+        if !entry.is_folder {
+            quick_mgr.register_note(&entry.path, &entry.name);
+        }
+    }
+
+    // Configura propriedades iniciais na janela
     app.set_vault_name(state.vault_name.as_str().into());
     app.set_active_note_title("Gnosis Core".into());
     app.set_active_note_content(
-        "# Gnosis Core\n\nArquitetura de alta performance com buffer de texto Ropey e VFS atômico.".into(),
+        "# Gnosis Core\n\nArquitetura de alto desempenho com buffer Ropey e VFS atômico.".into(),
     );
     app.set_word_count(14);
     app.set_char_count(92);
@@ -81,6 +105,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     app.set_can_go_back(tab_mgr.history.can_go_back());
     app.set_can_go_forward(tab_mgr.history.can_go_forward());
     app.set_is_split(false);
+    app.set_quick_switcher_open(false);
 
     let initial_tree = to_slint_tree(&state.visible_tree_items());
     app.set_file_tree(ModelRc::new(VecModel::from(initial_tree)));
@@ -90,6 +115,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let state_arc = Arc::new(Mutex::new(state));
     let tab_arc = Arc::new(Mutex::new(tab_mgr));
+    let quick_arc = Arc::new(Mutex::new(quick_mgr));
     let app_weak = app.as_weak();
 
     // Callback: Alternar barra lateral
@@ -106,7 +132,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
     }
 
-    // Callback: Alternar expansão de pasta
+    // Callback: Alternar pasta na árvore
     {
         let app_weak = app_weak.clone();
         let state_arc = Arc::clone(&state_arc);
@@ -121,7 +147,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
     }
 
-    // Callback: Selecionar nota na barra lateral (abre ou foca aba)
+    // Callback: Selecionar nota na barra lateral
     {
         let app_weak = app_weak.clone();
         let state_arc = Arc::clone(&state_arc);
@@ -135,7 +161,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .trim_end_matches(".md");
 
             let content = format!(
-                "# {}\n\nNota aberta no painel ativo.\n\nCaminho seguro: `{}`\nPronta para edição ágil.",
+                "# {}\n\nNota carregada com sucesso do Vault local.\n\nCaminho seguro: `{}`\nPronta para edição ágil.",
                 title, note_str
             );
 
@@ -164,7 +190,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
     }
 
-    // Callback: Selecionar aba ativa no topo
+    // Callback: Selecionar aba no topo
     {
         let app_weak = app_weak.clone();
         let tab_arc = Arc::clone(&tab_arc);
@@ -208,14 +234,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         w.set_active_note_content(content.as_str().into());
                     } else {
                         w.set_active_note_title("Sem abas abertas".into());
-                        w.set_active_note_content("Abra uma nota na barra lateral ou crie uma nova com Ctrl+N.".into());
+                        w.set_active_note_content("Abra uma nota na barra lateral ou pressione Ctrl+O para buscar.".into());
                     }
                 }
             }
         });
     }
 
-    // Callback: Voltar no histórico (Alt + Left)
+    // Callback: Voltar no histórico (Alt+Left)
     {
         let app_weak = app_weak.clone();
         let tab_arc = Arc::clone(&tab_arc);
@@ -242,7 +268,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
     }
 
-    // Callback: Avançar no histórico (Alt + Right)
+    // Callback: Avançar no histórico (Alt+Right)
     {
         let app_weak = app_weak.clone();
         let tab_arc = Arc::clone(&tab_arc);
@@ -269,7 +295,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
     }
 
-    // Callback: Alternar divisão de tela (Split View)
+    // Callback: Alternar Split View
     {
         let app_weak = app_weak.clone();
         let tab_arc = Arc::clone(&tab_arc);
@@ -297,30 +323,139 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         });
     }
 
-    // Callback: Criar nova aba
+    // Callback: Abrir Quick Switcher (Ctrl+O) ou Paleta de Comandos (Ctrl+P)
     {
         let app_weak = app_weak.clone();
-        let tab_arc = Arc::clone(&tab_arc);
-        app.on_new_tab(move || {
-            if let Ok(mut tm) = tab_arc.lock() {
-                let count = tm.active_pane().tabs.len() + 1;
-                let path = format!("Sem Título {}.md", count);
-                let title = format!("Sem Título {}", count);
-                tm.open_note(&path, &title);
+        let quick_arc = Arc::clone(&quick_arc);
+        app.on_open_quick_switcher(move |mode_str| {
+            let mode = if mode_str.as_str() == "commands" {
+                QuickMode::Commands
+            } else {
+                QuickMode::Files
+            };
+
+            let placeholder = match mode {
+                QuickMode::Files => "Digite para buscar uma nota no Vault (Ctrl+O)...",
+                QuickMode::Commands => "Digite um comando para executar (Ctrl+P)...",
+            };
+
+            if let Ok(mut qm) = quick_arc.lock() {
+                qm.open(mode);
+                let slint_items = to_slint_quick_items(&qm.filtered_items, qm.selected_index);
 
                 if let Some(w) = app_weak.upgrade() {
-                    w.set_active_note_title(title.as_str().into());
-                    w.set_active_note_content("# Nova Nota\n\nComece a registrar suas ideias aqui...".into());
-                    let tabs = to_slint_tabs(tm.active_pane());
-                    w.set_tabs(ModelRc::new(VecModel::from(tabs)));
+                    w.set_quick_switcher_placeholder(placeholder.into());
+                    w.set_quick_items(ModelRc::new(VecModel::from(slint_items)));
+                    w.set_quick_selected_index(qm.selected_index as i32);
+                    w.set_quick_switcher_open(true);
                 }
+            }
+        });
+    }
+
+    // Callback: Atualização do texto de busca no Quick Switcher
+    {
+        let app_weak = app_weak.clone();
+        let quick_arc = Arc::clone(&quick_arc);
+        app.on_quick_query_changed(move |query| {
+            if let Ok(mut qm) = quick_arc.lock() {
+                qm.set_query(query.as_str());
+                let slint_items = to_slint_quick_items(&qm.filtered_items, qm.selected_index);
+
+                if let Some(w) = app_weak.upgrade() {
+                    w.set_quick_items(ModelRc::new(VecModel::from(slint_items)));
+                    w.set_quick_selected_index(qm.selected_index as i32);
+                }
+            }
+        });
+    }
+
+    // Callback: Seleção de item no Quick Switcher
+    {
+        let app_weak = app_weak.clone();
+        let quick_arc = Arc::clone(&quick_arc);
+        let tab_arc = Arc::clone(&tab_arc);
+        let state_arc = Arc::clone(&state_arc);
+
+        app.on_quick_item_clicked(move |idx| {
+            let mut action_opt = None;
+
+            if let Ok(qm) = quick_arc.lock() {
+                if let Some(item) = qm.filtered_items.get(idx as usize) {
+                    action_opt = Some((item.item_type, item.action_id.clone(), item.title.clone()));
+                }
+            }
+
+            if let Some((item_type, action_id, title)) = action_opt {
+                match item_type {
+                    gnosis_app::QuickItemType::Note => {
+                        let path = action_id;
+                        let content = format!(
+                            "# {}\n\nNota aberta via Quick Switcher instantâneo.\n\nCaminho: `{}`",
+                            title, path
+                        );
+
+                        if let Ok(mut tm) = tab_arc.lock() {
+                            tm.open_note(&path, &title);
+                        }
+
+                        if let Ok(mut st) = state_arc.lock() {
+                            st.select_note(&path, &content);
+                        }
+
+                        if let Some(w) = app_weak.upgrade() {
+                            w.set_active_note_title(title.as_str().into());
+                            w.set_active_note_content(content.as_str().into());
+
+                            if let Ok(tm) = tab_arc.lock() {
+                                let tabs = to_slint_tabs(tm.active_pane());
+                                w.set_tabs(ModelRc::new(VecModel::from(tabs)));
+                            }
+                        }
+                    }
+                    gnosis_app::QuickItemType::Command => {
+                        info!("Executando comando da paleta: {}", action_id);
+                        // Comandos rápidos executados via paleta
+                        if action_id == "cmd_toggle_sidebar" {
+                            if let Ok(mut st) = state_arc.lock() {
+                                let col = st.toggle_sidebar();
+                                if let Some(w) = app_weak.upgrade() {
+                                    w.set_sidebar_collapsed(col);
+                                }
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+
+            // Fecha modal
+            if let Ok(mut qm) = quick_arc.lock() {
+                qm.close();
+            }
+            if let Some(w) = app_weak.upgrade() {
+                w.set_quick_switcher_open(false);
+            }
+        });
+    }
+
+    // Callback: Fechar Quick Switcher (Esc ou clique fora)
+    {
+        let app_weak = app_weak.clone();
+        let quick_arc = Arc::clone(&quick_arc);
+        app.on_quick_close_requested(move || {
+            if let Ok(mut qm) = quick_arc.lock() {
+                qm.close();
+            }
+            if let Some(w) = app_weak.upgrade() {
+                w.set_quick_switcher_open(false);
             }
         });
     }
 
     // Suporte a modo headless para testes e CI
     if std::env::var("GNOSIS_HEADLESS").is_ok() {
-        info!("Modo headless detectado. Inicialização do Slint com abas validada.");
+        info!("Modo headless detectado. Inicialização do Quick Switcher validada.");
         return Ok(());
     }
 

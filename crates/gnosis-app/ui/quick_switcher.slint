@@ -1,0 +1,177 @@
+import { Theme } from "theme.slint";
+
+export struct QuickItemData {
+    id: string,
+    title: string,
+    subtitle: string,
+    icon: string,
+    is_selected: bool,
+}
+
+export component QuickSwitcherModal inherits Rectangle {
+    in property <bool> is_open: false;
+    in property <string> placeholder_text: "Digite para pesquisar uma nota (Ctrl+O)...";
+    in property <[QuickItemData]> items: [];
+    in property <int> selected_index: 0;
+
+    callback query_changed(string);
+    callback item_clicked(int);
+    callback close_requested();
+
+    // Backdrop translúcido
+    background: #000000aa;
+    width: 100%;
+    height: 100%;
+    visible: root.is_open;
+
+    // Área de clique no fundo para fechar
+    TouchArea {
+        clicked => { root.close_requested(); }
+    }
+
+    // Janela Modal Flutuante Centralizada
+    Rectangle {
+        width: 540px;
+        height: 380px;
+        background: Theme.sidebar_bg;
+        border-radius: 10px;
+        border-width: 1px;
+        border-color: Theme.accent;
+        x: (parent.width - self.width) / 2;
+        y: 80px; // Ligeiramente acima do centro para ergonomia visual
+
+        VerticalLayout {
+            padding: 12px;
+            spacing: 8px;
+
+            // Barra de Entrada de Busca
+            Rectangle {
+                height: 38px;
+                background: Theme.background;
+                border-radius: 6px;
+                border-width: 1px;
+                border-color: Theme.border;
+
+                HorizontalLayout {
+                    padding-left: 10px;
+                    padding-right: 10px;
+                    spacing: 8px;
+                    alignment: start;
+
+                    Text {
+                        text: "🔍";
+                        font-size: 13px;
+                        vertical-alignment: center;
+                    }
+
+                    input := TextInput {
+                        text: "";
+                        color: Theme.text_primary;
+                        font-size: 14px;
+                        vertical-alignment: center;
+                        horizontal-stretch: 1;
+
+                        edited => {
+                            root.query_changed(self.text);
+                        }
+                    }
+                }
+            }
+
+            // Lista Rolável de Resultados
+            Flickable {
+                vertical-stretch: 1;
+
+                VerticalLayout {
+                    spacing: 3px;
+                    alignment: start;
+
+                    for item[idx] in root.items: Rectangle {
+                        height: 42px;
+                        border-radius: 6px;
+                        background: (idx == root.selected_index) ? Theme.surface_active : (touch_row.has-hover ? Theme.surface_hover : transparent);
+
+                        HorizontalLayout {
+                            padding-left: 10px;
+                            padding-right: 10px;
+                            spacing: 10px;
+                            alignment: space-between;
+
+                            // Ícone e Título Principal
+                            HorizontalLayout {
+                                spacing: 8px;
+                                alignment: start;
+                                horizontal-stretch: 1;
+
+                                Text {
+                                    text: item.icon;
+                                    font-size: 14px;
+                                    vertical-alignment: center;
+                                }
+
+                                VerticalLayout {
+                                    alignment: center;
+                                    spacing: 1px;
+
+                                    Text {
+                                        text: item.title;
+                                        color: (idx == root.selected_index) ? Theme.accent : Theme.text_primary;
+                                        font-size: 13px;
+                                        font-weight: 600;
+                                        overflow: elide;
+                                    }
+
+                                    Text {
+                                        text: item.subtitle;
+                                        color: Theme.text_muted;
+                                        font-size: 11px;
+                                        overflow: elide;
+                                    }
+                                }
+                            }
+
+                            // Seta indicativa no item selecionado
+                            if (idx == root.selected_index): Text {
+                                text: "↵";
+                                color: Theme.accent;
+                                font-size: 13px;
+                                vertical-alignment: center;
+                            }
+                        }
+
+                        touch_row := TouchArea {
+                            clicked => { root.item_clicked(idx); }
+                        }
+                    }
+                }
+            }
+
+            // Rodapé Informativo com Dicas de Atalhos
+            Rectangle {
+                height: 24px;
+                border-top-width: 1px;
+                border-color: Theme.border;
+
+                HorizontalLayout {
+                    alignment: space-between;
+                    padding-left: 4px;
+                    padding-right: 4px;
+
+                    Text {
+                        text: "↑ ↓ navegar  •  ↵ selecionar  •  esc fechar";
+                        color: Theme.text_muted;
+                        font-size: 10px;
+                        vertical-alignment: center;
+                    }
+
+                    Text {
+                        text: root.items.length + " resultados";
+                        color: Theme.text_muted;
+                        font-size: 10px;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+        }
+    }
+}
