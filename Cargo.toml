@@ -7,6 +7,7 @@ members = [
     "crates/gnosis-plugins",
     "crates/gnosis-fs-native",
     "crates/gnosis-fs-web",
+    "crates/gnosis-sync",
     "crates/gnosis-app",
 ]
 
