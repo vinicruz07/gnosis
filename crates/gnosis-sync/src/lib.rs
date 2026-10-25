@@ -10,8 +10,13 @@
 #![deny(clippy::expect_used)]
 #![deny(clippy::panic)]
 
+pub mod crypto;
 pub mod error;
 pub mod merkle;
 
+pub use crypto::{
+    generate_pairing_code, normalize_pairing_code, CryptoEnvelope, HandshakeChallenge,
+    HandshakeResponse, RoomHandshake, RoomKey, RoomSecurity, KEY_LEN, NONCE_LEN, ROOM_SALT_LEN,
+};
 pub use error::{Result, SyncError};
 pub use merkle::{compute_hash, MerkleNode, VaultDiff, VaultMerkleTree};

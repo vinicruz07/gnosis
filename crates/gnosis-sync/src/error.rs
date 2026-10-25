@@ -23,6 +23,12 @@ pub enum SyncError {
 
     #[error("Erro na árvore Merkle: {0}")]
     Merkle(String),
+
+    #[error("Falha criptográfica E2EE: {0}")]
+    Crypto(String),
+
+    #[error("Falha no handshake de autenticação da sala: {0}")]
+    HandshakeFailed(String),
 }
 
 impl From<serde_json::Error> for SyncError {
