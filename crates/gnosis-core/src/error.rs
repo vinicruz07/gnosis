@@ -1,15 +1,60 @@
+//! Gestão de erros tipados e exaustivos do Gnosis Core.
+//!
+//! Em conformidade com as diretrizes do projeto:
+//! - Zero pânicos em tempo de execução.
+//! - Nenhuma perda de contexto de erro.
+//! - 100% Rust Seguro (`#![forbid(unsafe_code)]`).
+
 use thiserror::Error;
 
+/// Tipo padrão de resultado para todas as operações do núcleo do Gnosis.
 pub type Result<T> = std::result::Result<T, CoreError>;
 
+/// Enum exaustivo de erros possíveis nas operações do Vault e VFS.
 #[derive(Debug, Error)]
 pub enum CoreError {
-    #[error("I/O error: {0}")]
-    Io(#[from] std::io::Error),
+    #[error("Tentativa de travessia ilegal de diretório (Path Traversal detectado): '{0}'")]
+    PathTraversal(String),
 
-    #[error("Vault not found at path: {0}")]
-    VaultNotFound(std::path::PathBuf),
+    #[error("Caminho do Vault inválido: '{0}' (motivo: {1})")]
+    InvalidPath(String, &'static str),
 
-    #[error("Invalid vault configuration: {0}")]
-    InvalidConfig(String),
+    #[error("Recurso não encontrado no Vault: '{0}'")]
+    NotFound(String),
+
+    #[error("Recurso já existente no caminho: '{0}'")]
+    AlreadyExists(String),
+
+    #[error("Permissão negada para acessar o caminho: '{0}'")]
+    PermissionDenied(String),
+
+    #[error("O caminho esperado como arquivo é um diretório: '{0}'")]
+    IsDirectory(String),
+
+    #[error("O caminho esperado como diretório é um arquivo: '{0}'")]
+    NotDirectory(String),
+
+    #[error("Falha de I/O na camada de armazenamento: {0}")]
+    Io(String),
+
+    #[error("Erro de codificação UTF-8 no conteúdo da nota: {0}")]
+    Utf8Error(String),
+
+    #[error("Configuração do Vault corrompida ou inválida: {0}")]
+    InvalidVaultConfig(String),
+
+    #[error("Falha de serialização/deserialização: {0}")]
+    Serialization(String),
+}
+
+impl From<std::io::Error> for CoreError {
+    fn from(err: std::io::Error) -> Self {
+        Self::Io(err.to_string())
+    }
+}
+
+impl From<std::string::FromUtf8Error> for CoreError {
+    fn from(err: std::string::FromUtf8Error) -> Self {
+        Self::Utf8Error(err.to_string())
+    }
 }

@@ -12,7 +12,10 @@ impl Vault {
     pub fn open<P: AsRef<Path>>(path: P) -> Result<Self> {
         let path = path.as_ref().to_path_buf();
         if !path.exists() || !path.is_dir() {
-            return Err(CoreError::VaultNotFound(path));
+            return Err(CoreError::NotFound(format!(
+                "Diretório do Vault não encontrado: {}",
+                path.display()
+            )));
         }
 
         let name = path

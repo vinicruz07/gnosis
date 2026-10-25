@@ -16,3 +16,5 @@ thiserror.workspace = true
 tracing.workspace = true
 notify.workspace = true
 walkdir.workspace = true
+async-trait.workspace = true
+
