@@ -29,6 +29,9 @@ pub enum SyncError {
 
     #[error("Falha no handshake de autenticação da sala: {0}")]
     HandshakeFailed(String),
+
+    #[error("Erro no motor CRDT Yrs: {0}")]
+    Crdt(String),
 }
 
 impl From<serde_json::Error> for SyncError {

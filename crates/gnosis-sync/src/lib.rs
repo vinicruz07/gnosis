@@ -10,11 +10,13 @@
 #![deny(clippy::expect_used)]
 #![deny(clippy::panic)]
 
+pub mod crdt;
 pub mod crypto;
 pub mod error;
 pub mod merkle;
 pub mod transport;
 
+pub use crdt::{CollaborativeDoc, PeerCursor};
 pub use crypto::{
     generate_pairing_code, normalize_pairing_code, CryptoEnvelope, HandshakeChallenge,
     HandshakeResponse, RoomHandshake, RoomKey, RoomSecurity, KEY_LEN, NONCE_LEN, ROOM_SALT_LEN,

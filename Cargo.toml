@@ -44,5 +44,6 @@ ropey = "1.6"
 chacha20poly1305 = "0.10"
 argon2 = "0.5"
 rand = "0.8"
+yrs = "0.18"
 
 
