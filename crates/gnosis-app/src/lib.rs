@@ -11,8 +11,10 @@
 #![deny(clippy::panic)]
 
 pub mod state;
+pub mod tabs;
 
 pub use state::{AppState, FileTreeEntry, TreeItemModel};
+pub use tabs::{EditorPane, NavigationHistory, SplitDirection, TabItem, TabManager};
 
 // Inclui os módulos e componentes de janela compilados pelo Slint no build.rs
 slint::include_modules!();

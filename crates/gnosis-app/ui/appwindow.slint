@@ -1,6 +1,7 @@
 import { Theme } from "theme.slint";
 import { Sidebar, TreeItemData } from "sidebar.slint";
 import { StatusBar } from "statusbar.slint";
+import { TabBar, TabData } from "tabbar.slint";
 
 export component AppWindow inherits Window {
     title: "Gnosis";
@@ -10,12 +11,26 @@ export component AppWindow inherits Window {
     min-height: 400px;
     background: Theme.background;
 
-    // Propriedades expostas para o Rust
+    // Propriedades do Vault e Arquivos
     in property <string> vault_name: "Meu Vault";
-    in property <string> active_note_title: "Boas-vindas ao Gnosis";
-    in property <string> active_note_content: "# Bem-vindo ao Gnosis\n\nRecompilação de alto desempenho do Obsidian em Rust puro.";
     in property <[TreeItemData]> file_tree: [];
     in-out property <bool> sidebar_collapsed: false;
+
+    // Propriedades do Painel Primário
+    in property <string> active_note_title: "Boas-vindas ao Gnosis";
+    in property <string> active_note_content: "# Bem-vindo ao Gnosis\n\nRecompilação de alto desempenho do Obsidian em Rust puro.";
+
+    // Propriedades do Painel Secundário (Split View)
+    in property <bool> is_split: false;
+    in property <string> secondary_note_title: "Nota Dividida";
+    in property <string> secondary_note_content: "Este painel está em modo Split View lado a lado.";
+
+    // Propriedades de Abas e Histórico
+    in property <[TabData]> tabs: [];
+    in property <bool> can_go_back: false;
+    in property <bool> can_go_forward: false;
+
+    // Propriedades da Barra de Status
     in property <string> sync_status: "Sincronizado (Local)";
     in property <color> sync_color: Theme.success;
     in property <int> word_count: 14;
@@ -28,10 +43,18 @@ export component AppWindow inherits Window {
     callback new_note_requested();
     callback content_changed(string);
 
+    // Callbacks de Abas, Split e Histórico
+    callback tab_selected(int);
+    callback tab_closed(int);
+    callback go_back();
+    callback go_forward();
+    callback toggle_split();
+    callback new_tab();
+
     VerticalLayout {
         spacing: 0px;
 
-        // Área Central (Barra Lateral + Editor / Conteúdo)
+        // Área Central (Barra Lateral + Abas + Editor / Split)
         HorizontalLayout {
             vertical-stretch: 1;
             spacing: 0px;
@@ -48,7 +71,7 @@ export component AppWindow inherits Window {
                 new_note_requested => { root.new_note_requested(); }
             }
 
-            // Botão de reabertura da barra lateral se estiver recolhida
+            // Botão de reabertura da barra lateral quando recolhida
             if (root.sidebar_collapsed): Rectangle {
                 width: 28px;
                 background: Theme.sidebar_bg;
@@ -68,44 +91,119 @@ export component AppWindow inherits Window {
                 }
             }
 
-            // Painel Central (Editor / Visualização)
-            Rectangle {
+            // Área Central de Trabalho (Abas no topo + Painel ou Split View)
+            VerticalLayout {
                 horizontal-stretch: 1;
-                background: Theme.background;
+                spacing: 0px;
 
-                VerticalLayout {
-                    padding: 16px;
-                    spacing: 12px;
+                // Barra de Abas Superiores
+                TabBar {
+                    tabs: root.tabs;
+                    can_go_back: root.can_go_back;
+                    can_go_forward: root.can_go_forward;
+                    is_split: root.is_split;
 
-                    // Cabeçalho da Nota Ativa
-                    HorizontalLayout {
-                        height: 32px;
-                        alignment: space-between;
+                    tab_selected(idx) => { root.tab_selected(idx); }
+                    tab_closed(idx) => { root.tab_closed(idx); }
+                    go_back => { root.go_back(); }
+                    go_forward => { root.go_forward(); }
+                    toggle_split => { root.toggle_split(); }
+                    new_tab => { root.new_tab(); }
+                }
 
-                        Text {
-                            text: root.active_note_title;
-                            color: Theme.text_primary;
-                            font-size: 18px;
-                            font-weight: 700;
-                            vertical-alignment: center;
+                // Corpo dos Editores (Único ou Lado a Lado se Split)
+                HorizontalLayout {
+                    vertical-stretch: 1;
+                    spacing: 0px;
+
+                    // Painel Principal
+                    Rectangle {
+                        horizontal-stretch: 1;
+                        background: Theme.background;
+
+                        VerticalLayout {
+                            padding: 16px;
+                            spacing: 12px;
+
+                            HorizontalLayout {
+                                height: 32px;
+                                alignment: space-between;
+
+                                Text {
+                                    text: root.active_note_title;
+                                    color: Theme.text_primary;
+                                    font-size: 18px;
+                                    font-weight: 700;
+                                    vertical-alignment: center;
+                                }
+                            }
+
+                            Rectangle {
+                                height: 1px;
+                                background: Theme.border;
+                            }
+
+                            Flickable {
+                                vertical-stretch: 1;
+
+                                Text {
+                                    text: root.active_note_content;
+                                    color: Theme.text_secondary;
+                                    font-size: 14px;
+                                    wrap: word-wrap;
+                                }
+                            }
                         }
                     }
 
-                    // Divisor
-                    Rectangle {
-                        height: 1px;
-                        background: Theme.border;
-                    }
+                    // Painel Secundário se Split View Ativo
+                    if (root.is_split): HorizontalLayout {
+                        horizontal-stretch: 1;
+                        spacing: 0px;
 
-                    // Prévia / Leitura do Conteúdo
-                    Flickable {
-                        vertical-stretch: 1;
+                        // Divisor Central
+                        Rectangle {
+                            width: 1px;
+                            background: Theme.border;
+                        }
 
-                        Text {
-                            text: root.active_note_content;
-                            color: Theme.text_secondary;
-                            font-size: 14px;
-                            wrap: word-wrap;
+                        Rectangle {
+                            horizontal-stretch: 1;
+                            background: Theme.background;
+
+                            VerticalLayout {
+                                padding: 16px;
+                                spacing: 12px;
+
+                                HorizontalLayout {
+                                    height: 32px;
+                                    alignment: space-between;
+
+                                    Text {
+                                        text: root.secondary_note_title;
+                                        color: Theme.text_primary;
+                                        font-size: 18px;
+                                        font-weight: 700;
+                                        vertical-alignment: center;
+                                    }
+                                }
+
+                                Rectangle {
+                                    height: 1px;
+                                    background: Theme.border;
+                                }
+
+                                Flickable {
+                                    vertical-stretch: 1;
+
+                                    Text {
+                                        text: root.secondary_note_content;
+                                        color: Theme.text_secondary;
+                                        font-size: 14px;
+                                        wrap: word-wrap;
+                                    }
+                                }
+                            }
                         }
                     }
                 }

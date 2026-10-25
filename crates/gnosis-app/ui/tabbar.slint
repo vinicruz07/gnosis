@@ -1,0 +1,220 @@
+import { Theme } from "theme.slint";
+
+export struct TabData {
+    id: string,
+    title: string,
+    path: string,
+    is_active: bool,
+    is_pinned: bool,
+    is_modified: bool,
+}
+
+export component TabBar inherits Rectangle {
+    in property <[TabData]> tabs: [];
+    in property <bool> can_go_back: false;
+    in property <bool> can_go_forward: false;
+    in property <bool> is_split: false;
+
+    callback tab_selected(int);
+    callback tab_closed(int);
+    callback go_back();
+    callback go_forward();
+    callback toggle_split();
+    callback new_tab();
+
+    height: 36px;
+    background: Theme.sidebar_bg;
+    border-bottom-width: 1px;
+    border-color: Theme.border;
+
+    HorizontalLayout {
+        padding-left: 6px;
+        padding-right: 6px;
+        spacing: 4px;
+        alignment: space-between;
+
+        // Botões de Histórico (Voltar e Avançar)
+        HorizontalLayout {
+            spacing: 2px;
+            alignment: start;
+
+            // Voltar (Alt + Left)
+            Rectangle {
+                width: 26px;
+                height: 26px;
+                border-radius: 4px;
+                background: root.can_go_back && touch_back.has-hover ? Theme.surface_hover : transparent;
+                y: (parent.height - self.height) / 2;
+
+                Text {
+                    text: "◀";
+                    color: root.can_go_back ? Theme.text_primary : Theme.text_muted;
+                    font-size: 11px;
+                    vertical-alignment: center;
+                    horizontal-alignment: center;
+                }
+
+                touch_back := TouchArea {
+                    enabled: root.can_go_back;
+                    clicked => { root.go_back(); }
+                }
+            }
+
+            // Avançar (Alt + Right)
+            Rectangle {
+                width: 26px;
+                height: 26px;
+                border-radius: 4px;
+                background: root.can_go_forward && touch_fwd.has-hover ? Theme.surface_hover : transparent;
+                y: (parent.height - self.height) / 2;
+
+                Text {
+                    text: "▶";
+                    color: root.can_go_forward ? Theme.text_primary : Theme.text_muted;
+                    font-size: 11px;
+                    vertical-alignment: center;
+                    horizontal-alignment: center;
+                }
+
+                touch_fwd := TouchArea {
+                    enabled: root.can_go_forward;
+                    clicked => { root.go_forward(); }
+                }
+            }
+        }
+
+        // Barra de Abas (Horizontal com rolagem)
+        Flickable {
+            horizontal-stretch: 1;
+
+            HorizontalLayout {
+                spacing: 4px;
+                alignment: start;
+
+                for tab[idx] in root.tabs: Rectangle {
+                    height: 28px;
+                    min-width: 110px;
+                    max-width: 180px;
+                    border-radius: 6px;
+                    background: tab.is_active ? Theme.background : (touch_tab.has-hover ? Theme.surface_hover : Theme.sidebar_bg);
+                    border-width: tab.is_active ? 1px : 0px;
+                    border-color: Theme.border;
+                    y: (parent.height - self.height) / 2;
+
+                    HorizontalLayout {
+                        padding-left: 8px;
+                        padding-right: 6px;
+                        spacing: 6px;
+                        alignment: space-between;
+
+                        // Ícone e Título da Aba
+                        HorizontalLayout {
+                            spacing: 4px;
+                            horizontal-stretch: 1;
+                            alignment: start;
+
+                            if (tab.is_pinned): Text {
+                                text: "📌";
+                                font-size: 10px;
+                                vertical-alignment: center;
+                            }
+
+                            Text {
+                                text: tab.title;
+                                color: tab.is_active ? Theme.accent : Theme.text_secondary;
+                                font-size: 12px;
+                                font-weight: tab.is_active ? 600 : 400;
+                                overflow: elide;
+                                vertical-alignment: center;
+                            }
+                        }
+
+                        // Indicador de alteração ou Botão Fechar
+                        HorizontalLayout {
+                            spacing: 4px;
+                            alignment: end;
+
+                            if (tab.is_modified): Rectangle {
+                                width: 6px;
+                                height: 6px;
+                                border-radius: 3px;
+                                background: Theme.warning;
+                                y: (parent.height - self.height) / 2;
+                            }
+
+                            Rectangle {
+                                width: 16px;
+                                height: 16px;
+                                border-radius: 3px;
+                                background: touch_close.has-hover ? Theme.surface_active : transparent;
+
+                                Text {
+                                    text: "✕";
+                                    color: touch_close.has-hover ? Theme.text_primary : Theme.text_muted;
+                                    font-size: 9px;
+                                    vertical-alignment: center;
+                                    horizontal-alignment: center;
+                                }
+
+                                touch_close := TouchArea {
+                                    clicked => { root.tab_closed(idx); }
+                                }
+                            }
+                        }
+                    }
+
+                    touch_tab := TouchArea {
+                        clicked => { root.tab_selected(idx); }
+                    }
+                }
+            }
+        }
+
+        // Ações da Barra de Abas (Nova Aba e Split View)
+        HorizontalLayout {
+            spacing: 2px;
+            alignment: end;
+
+            // Nova Aba
+            Rectangle {
+                width: 26px;
+                height: 26px;
+                border-radius: 4px;
+                background: touch_add.has-hover ? Theme.surface_hover : transparent;
+                y: (parent.height - self.height) / 2;
+
+                Text {
+                    text: "➕";
+                    font-size: 10px;
+                    vertical-alignment: center;
+                    horizontal-alignment: center;
+                }
+
+                touch_add := TouchArea {
+                    clicked => { root.new_tab(); }
+                }
+            }
+
+            // Alternar Divisão de Tela (Split View)
+            Rectangle {
+                width: 26px;
+                height: 26px;
+                border-radius: 4px;
+                background: root.is_split ? Theme.surface_active : (touch_split.has-hover ? Theme.surface_hover : transparent);
+                y: (parent.height - self.height) / 2;
+
+                Text {
+                    text: root.is_split ? "⊟" : "◫";
+                    color: root.is_split ? Theme.accent : Theme.text_secondary;
+                    font-size: 12px;
+                    vertical-alignment: center;
+                    horizontal-alignment: center;
+                }
+
+                touch_split := TouchArea {
+                    clicked => { root.toggle_split(); }
+                }
+            }
+        }
+    }
+}
