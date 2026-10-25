@@ -1,0 +1,203 @@
+import { Theme } from "theme.slint";
+
+export struct RenderBlockData {
+    kind: string,
+    text: string,
+    extra: string,
+    is_checked: bool,
+}
+
+export component RichViewer inherits Rectangle {
+    in property <[RenderBlockData]> blocks: [];
+    callback task_toggled(int);
+
+    background: Theme.background;
+
+    Flickable {
+        vertical-stretch: 1;
+
+        VerticalLayout {
+            padding: 16px;
+            spacing: 12px;
+            alignment: start;
+
+            for block[idx] in root.blocks: Rectangle {
+                // H1
+                if (block.kind == "h1"): VerticalLayout {
+                    spacing: 4px;
+                    Text {
+                        text: block.text;
+                        color: Theme.text_primary;
+                        font-size: 24px;
+                        font-weight: 700;
+                        wrap: word-wrap;
+                    }
+                    Rectangle {
+                        height: 1px;
+                        background: Theme.border;
+                    }
+                }
+
+                // H2
+                if (block.kind == "h2"): Text {
+                    text: block.text;
+                    color: Theme.text_primary;
+                    font-size: 19px;
+                    font-weight: 600;
+                    wrap: word-wrap;
+                }
+
+                // H3
+                if (block.kind == "h3"): Text {
+                    text: block.text;
+                    color: Theme.text_secondary;
+                    font-size: 16px;
+                    font-weight: 600;
+                    wrap: word-wrap;
+                }
+
+                // Parágrafo Normal
+                if (block.kind == "paragraph"): Text {
+                    text: block.text;
+                    color: Theme.text_secondary;
+                    font-size: 14px;
+                    line-spacing: 4px;
+                    wrap: word-wrap;
+                }
+
+                // Bloco de Código Estilizado
+                if (block.kind == "code"): Rectangle {
+                    background: #11111b;
+                    border-radius: 6px;
+                    border-width: 1px;
+                    border-color: Theme.border;
+
+                    VerticalLayout {
+                        padding: 10px;
+                        spacing: 6px;
+
+                        // Rótulo da Linguagem
+                        HorizontalLayout {
+                            alignment: end;
+                            Text {
+                                text: block.extra;
+                                color: Theme.text_muted;
+                                font-size: 10px;
+                                font-weight: 600;
+                            }
+                        }
+
+                        // Código-fonte
+                        Text {
+                            text: block.text;
+                            color: #a6e3a1; // Verde suave para código
+                            font-size: 13px;
+                            wrap: word-wrap;
+                        }
+                    }
+                }
+
+                // Callout do Obsidian ([!NOTE], [!TIP], etc.)
+                if (block.kind == "callout"): Rectangle {
+                    background: Theme.surface;
+                    border-radius: 6px;
+                    border-left-width: 4px;
+                    border-color: Theme.accent;
+
+                    VerticalLayout {
+                        padding: 10px;
+                        spacing: 6px;
+
+                        // Título do Callout com Ícone
+                        HorizontalLayout {
+                            spacing: 6px;
+                            alignment: start;
+
+                            Text {
+                                text: "💡";
+                                font-size: 13px;
+                                vertical-alignment: center;
+                            }
+
+                            Text {
+                                text: block.extra;
+                                color: Theme.accent;
+                                font-size: 13px;
+                                font-weight: 600;
+                                vertical-alignment: center;
+                            }
+                        }
+
+                        // Conteúdo Interno
+                        Text {
+                            text: block.text;
+                            color: Theme.text_secondary;
+                            font-size: 13px;
+                            wrap: word-wrap;
+                        }
+                    }
+                }
+
+                // Tarefa com Checkbox Interativo
+                if (block.kind == "task"): Rectangle {
+                    height: 24px;
+
+                    HorizontalLayout {
+                        spacing: 8px;
+                        alignment: start;
+
+                        // Caixa de seleção
+                        Rectangle {
+                            width: 16px;
+                            height: 16px;
+                            border-radius: 4px;
+                            border-width: 1px;
+                            border-color: block.is_checked ? Theme.accent : Theme.text_muted;
+                            background: block.is_checked ? Theme.accent : transparent;
+                            y: (parent.height - self.height) / 2;
+
+                            Text {
+                                text: block.is_checked ? "✓" : "";
+                                color: #11111b;
+                                font-size: 11px;
+                                font-weight: 700;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+
+                            TouchArea {
+                                clicked => { root.task_toggled(idx); }
+                            }
+                        }
+
+                        // Texto da Tarefa
+                        Text {
+                            text: block.text;
+                            color: block.is_checked ? Theme.text_muted : Theme.text_primary;
+                            font-size: 13px;
+                            vertical-alignment: center;
+                        }
+                    }
+                }
+
+                // Citação (Blockquote)
+                if (block.kind == "quote"): Rectangle {
+                    background: Theme.surface;
+                    border-left-width: 3px;
+                    border-color: Theme.text_muted;
+
+                    VerticalLayout {
+                        padding: 8px;
+                        Text {
+                            text: block.text;
+                            color: Theme.text_secondary;
+                            font-size: 13px;
+                            font-italic: true;
+                            wrap: word-wrap;
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

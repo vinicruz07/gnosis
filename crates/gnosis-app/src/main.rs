@@ -1,6 +1,7 @@
 //! Ponto de entrada do aplicativo Gnosis Desktop.
 //!
-//! Inicialização do Slint UI com renderizador leve, abas múltiplas, split views e Quick Switcher (Ctrl+O).
+//! Inicialização do Slint UI com renderizador leve, abas, split view,
+//! Quick Switcher e alternância entre Modo Edição e Modo Leitura com blocos AST.
 
 #![forbid(unsafe_code)]
 #![deny(clippy::unwrap_used)]
@@ -8,8 +9,9 @@
 #![deny(clippy::panic)]
 
 use gnosis_app::{
-    AppState, AppWindow, EditorPane, QuickItem, QuickItemData, QuickMode,
-    QuickSwitcherManager, SplitDirection, TabData, TabManager, TreeItemData,
+    AppState, AppWindow, EditorController, EditorMode, EditorPane, QuickItem,
+    QuickItemData, QuickMode, QuickSwitcherManager, RenderBlockData,
+    RenderBlockModel, SplitDirection, TabData, TabManager, TreeItemData,
     TreeItemModel,
 };
 use slint::{ComponentHandle, ModelRc, VecModel};
@@ -60,9 +62,21 @@ fn to_slint_quick_items(items: &[QuickItem], selected_idx: usize) -> Vec<QuickIt
         .collect()
 }
 
+fn to_slint_ast_blocks(blocks: &[RenderBlockModel]) -> Vec<RenderBlockData> {
+    blocks
+        .iter()
+        .map(|b| RenderBlockData {
+            kind: b.kind.as_str().into(),
+            text: b.text.as_str().into(),
+            extra: b.extra.as_str().into(),
+            is_checked: b.is_checked,
+        })
+        .collect()
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();
-    info!("Inicializando Gnosis - Quick Switcher (Ctrl+O) & Paleta de Comandos");
+    info!("Inicializando Gnosis - Modo Leitura AST & Edição Ágil");
 
     // Instancia janela principal Slint
     let app = AppWindow::new()?;
@@ -79,10 +93,32 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     ];
     state.populate_from_paths(initial_paths);
 
+    // Conteúdo demonstrativo rico com múltiplos blocos AST
+    let sample_markdown = r#"# Gnosis Core & Slint Shell
+Recompilação de alto desempenho do Obsidian em Rust puro para hardware legado.
+
+```rust
+fn main() {
+    println!("Gnosis: 60 FPS com menos de 25MB de RAM");
+}
+```
+
+> [!NOTE] Arquitetura Desacoplada
+> O motor suporta Desktop nativo, Modo Portable em pendrives e Web via WebAssembly.
+
+- [x] Árvore de notas com Ropey e VFS atômico
+- [x] Grafo de conhecimento com física 2D e Auto-Sleep (0% CPU)
+- [ ] Renderizador matemático com Typst em vetor
+
+> "A simplicidade é o último grau de sofisticação." — Leonardo da Vinci
+"#;
+
     // Inicializa gerenciador de abas
     let mut tab_mgr = TabManager::new();
-    tab_mgr.open_note("00_Inbox/Ideias Rápidas.md", "Ideias Rápidas");
     tab_mgr.open_note("01_Projetos/Rust/Gnosis Core.md", "Gnosis Core");
+
+    // Inicializa controlador do editor com Ropey
+    let mut editor_ctrl = EditorController::new("01_Projetos/Rust/Gnosis Core.md", sample_markdown);
 
     // Inicializa Quick Switcher com as notas catalogadas
     let mut quick_mgr = QuickSwitcherManager::new();
@@ -95,11 +131,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Configura propriedades iniciais na janela
     app.set_vault_name(state.vault_name.as_str().into());
     app.set_active_note_title("Gnosis Core".into());
-    app.set_active_note_content(
-        "# Gnosis Core\n\nArquitetura de alto desempenho com buffer Ropey e VFS atômico.".into(),
-    );
-    app.set_word_count(14);
-    app.set_char_count(92);
+    app.set_active_note_content(editor_ctrl.content().as_str().into());
+    app.set_is_editing(editor_ctrl.mode == EditorMode::Edit);
+    app.set_word_count(editor_ctrl.word_count() as i32);
+    app.set_char_count(editor_ctrl.char_count() as i32);
     app.set_sidebar_collapsed(state.sidebar_collapsed);
     app.set_sync_status("Sincronizado (Local)".into());
     app.set_can_go_back(tab_mgr.history.can_go_back());
@@ -113,10 +148,76 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let initial_tabs = to_slint_tabs(tab_mgr.active_pane());
     app.set_tabs(ModelRc::new(VecModel::from(initial_tabs)));
 
+    let initial_ast = to_slint_ast_blocks(&editor_ctrl.generate_render_blocks());
+    app.set_ast_blocks(ModelRc::new(VecModel::from(initial_ast)));
+
     let state_arc = Arc::new(Mutex::new(state));
     let tab_arc = Arc::new(Mutex::new(tab_mgr));
+    let editor_arc = Arc::new(Mutex::new(editor_ctrl));
     let quick_arc = Arc::new(Mutex::new(quick_mgr));
     let app_weak = app.as_weak();
+
+    // Callback: Alternar modo de Edição / Leitura (Ctrl+E)
+    {
+        let app_weak = app_weak.clone();
+        let editor_arc = Arc::clone(&editor_arc);
+        app.on_toggle_editor_mode(move || {
+            if let Ok(mut ed) = editor_arc.lock() {
+                let mode = ed.toggle_mode();
+                let is_edit = mode == EditorMode::Edit;
+                let ast = to_slint_ast_blocks(&ed.generate_render_blocks());
+
+                if let Some(w) = app_weak.upgrade() {
+                    w.set_is_editing(is_edit);
+                    w.set_ast_blocks(ModelRc::new(VecModel::from(ast)));
+                }
+            }
+        });
+    }
+
+    // Callback: Edição de texto ao vivo pelo usuário
+    {
+        let app_weak = app_weak.clone();
+        let editor_arc = Arc::clone(&editor_arc);
+        let tab_arc = Arc::clone(&tab_arc);
+        app.on_note_text_edited(move |new_text| {
+            if let Ok(mut ed) = editor_arc.lock() {
+                ed.set_content(new_text.as_str());
+                let words = ed.word_count();
+                let chars = ed.char_count();
+
+                if let Some(w) = app_weak.upgrade() {
+                    w.set_word_count(words as i32);
+                    w.set_char_count(chars as i32);
+                }
+            }
+
+            if let Ok(mut tm) = tab_arc.lock() {
+                if let Some(tab) = tm.active_pane_mut().active_tab_mut() {
+                    tab.is_modified = true;
+                }
+                if let Some(w) = app_weak.upgrade() {
+                    let tabs = to_slint_tabs(tm.active_pane());
+                    w.set_tabs(ModelRc::new(VecModel::from(tabs)));
+                }
+            }
+        });
+    }
+
+    // Callback: Alternar checkbox de tarefa na visualização
+    {
+        let app_weak = app_weak.clone();
+        let editor_arc = Arc::clone(&editor_arc);
+        app.on_task_checkbox_toggled(move |_idx| {
+            // Em visualização rica, pode alternar estado da tarefa
+            if let Ok(ed) = editor_arc.lock() {
+                let ast = to_slint_ast_blocks(&ed.generate_render_blocks());
+                if let Some(w) = app_weak.upgrade() {
+                    w.set_ast_blocks(ModelRc::new(VecModel::from(ast)));
+                }
+            }
+        });
+    }
 
     // Callback: Alternar barra lateral
     {
@@ -152,6 +253,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let app_weak = app_weak.clone();
         let state_arc = Arc::clone(&state_arc);
         let tab_arc = Arc::clone(&tab_arc);
+        let editor_arc = Arc::clone(&editor_arc);
         app.on_note_selected(move |note_path| {
             let note_str = note_path.as_str();
             let title = note_str
@@ -161,12 +263,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .trim_end_matches(".md");
 
             let content = format!(
-                "# {}\n\nNota carregada com sucesso do Vault local.\n\nCaminho seguro: `{}`\nPronta para edição ágil.",
+                "# {}\n\nNota carregada com sucesso do Vault local.\n\n```rust\n// Código na nota {}\n```\n\n> [!NOTE]\n> Nota ativa pronta para edição ágil.",
                 title, note_str
             );
 
             if let Ok(mut st) = state_arc.lock() {
                 st.select_note(note_str, &content);
+            }
+
+            if let Ok(mut ed) = editor_arc.lock() {
+                ed.note_path = note_str.to_string();
+                ed.note_title = title.to_string();
+                ed.set_content(&content);
             }
 
             if let Ok(mut tm) = tab_arc.lock() {
@@ -181,6 +289,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     let tabs = to_slint_tabs(tm.active_pane());
                     w.set_tabs(ModelRc::new(VecModel::from(tabs)));
 
+                    if let Ok(ed) = editor_arc.lock() {
+                        let ast = to_slint_ast_blocks(&ed.generate_render_blocks());
+                        w.set_ast_blocks(ModelRc::new(VecModel::from(ast)));
+                    }
+
                     if let Ok(st) = state_arc.lock() {
                         let items = to_slint_tree(&st.visible_tree_items());
                         w.set_file_tree(ModelRc::new(VecModel::from(items)));
@@ -194,6 +307,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     {
         let app_weak = app_weak.clone();
         let tab_arc = Arc::clone(&tab_arc);
+        let editor_arc = Arc::clone(&editor_arc);
         app.on_tab_selected(move |idx| {
             if let Ok(mut tm) = tab_arc.lock() {
                 if tm.active_pane_mut().select_tab(idx as usize) {
@@ -202,12 +316,21 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         let path = tab.path.clone();
                         let content = format!("# {}\n\nConteúdo restaurado da aba `{}`.", title, path);
 
+                        if let Ok(mut ed) = editor_arc.lock() {
+                            ed.set_content(&content);
+                        }
+
                         if let Some(w) = app_weak.upgrade() {
                             w.set_active_note_title(title.as_str().into());
                             w.set_active_note_content(content.as_str().into());
 
                             let tabs = to_slint_tabs(tm.active_pane());
                             w.set_tabs(ModelRc::new(VecModel::from(tabs)));
+
+                            if let Ok(ed) = editor_arc.lock() {
+                                let ast = to_slint_ast_blocks(&ed.generate_render_blocks());
+                                w.set_ast_blocks(ModelRc::new(VecModel::from(ast)));
+                            }
                         }
                     }
                 }
@@ -245,6 +368,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     {
         let app_weak = app_weak.clone();
         let tab_arc = Arc::clone(&tab_arc);
+        let editor_arc = Arc::clone(&editor_arc);
         app.on_go_back(move || {
             if let Ok(mut tm) = tab_arc.lock() {
                 if let Some(path) = tm.navigate_back() {
@@ -254,14 +378,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .unwrap_or(&path)
                         .trim_end_matches(".md");
 
+                    let content = format!("# {}\n\nNavegação retornada para `{}`.", title, path);
+
+                    if let Ok(mut ed) = editor_arc.lock() {
+                        ed.set_content(&content);
+                    }
+
                     if let Some(w) = app_weak.upgrade() {
                         w.set_active_note_title(title.into());
-                        w.set_active_note_content(format!("# {}\n\nNavegação retornada para `{}`.", title, path).into());
+                        w.set_active_note_content(content.as_str().into());
                         w.set_can_go_back(tm.history.can_go_back());
                         w.set_can_go_forward(tm.history.can_go_forward());
 
                         let tabs = to_slint_tabs(tm.active_pane());
                         w.set_tabs(ModelRc::new(VecModel::from(tabs)));
+
+                        if let Ok(ed) = editor_arc.lock() {
+                            let ast = to_slint_ast_blocks(&ed.generate_render_blocks());
+                            w.set_ast_blocks(ModelRc::new(VecModel::from(ast)));
+                        }
                     }
                 }
             }
@@ -272,6 +407,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     {
         let app_weak = app_weak.clone();
         let tab_arc = Arc::clone(&tab_arc);
+        let editor_arc = Arc::clone(&editor_arc);
         app.on_go_forward(move || {
             if let Ok(mut tm) = tab_arc.lock() {
                 if let Some(path) = tm.navigate_forward() {
@@ -281,14 +417,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                         .unwrap_or(&path)
                         .trim_end_matches(".md");
 
+                    let content = format!("# {}\n\nNavegação avançada para `{}`.", title, path);
+
+                    if let Ok(mut ed) = editor_arc.lock() {
+                        ed.set_content(&content);
+                    }
+
                     if let Some(w) = app_weak.upgrade() {
                         w.set_active_note_title(title.into());
-                        w.set_active_note_content(format!("# {}\n\nNavegação avançada para `{}`.", title, path).into());
+                        w.set_active_note_content(content.as_str().into());
                         w.set_can_go_back(tm.history.can_go_back());
                         w.set_can_go_forward(tm.history.can_go_forward());
 
                         let tabs = to_slint_tabs(tm.active_pane());
                         w.set_tabs(ModelRc::new(VecModel::from(tabs)));
+
+                        if let Ok(ed) = editor_arc.lock() {
+                            let ast = to_slint_ast_blocks(&ed.generate_render_blocks());
+                            w.set_ast_blocks(ModelRc::new(VecModel::from(ast)));
+                        }
                     }
                 }
             }
@@ -376,6 +523,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         let quick_arc = Arc::clone(&quick_arc);
         let tab_arc = Arc::clone(&tab_arc);
         let state_arc = Arc::clone(&state_arc);
+        let editor_arc = Arc::clone(&editor_arc);
 
         app.on_quick_item_clicked(move |idx| {
             let mut action_opt = None;
@@ -391,8 +539,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     gnosis_app::QuickItemType::Note => {
                         let path = action_id;
                         let content = format!(
-                            "# {}\n\nNota aberta via Quick Switcher instantâneo.\n\nCaminho: `{}`",
-                            title, path
+                            "# {}\n\nNota aberta via Quick Switcher instantâneo.\n\n```rust\n// Código na nota {}\n```\n\n> [!NOTE]\n> Nota ativa pronta para edição ágil.",
+                            title, path, path
                         );
 
                         if let Ok(mut tm) = tab_arc.lock() {
@@ -403,6 +551,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                             st.select_note(&path, &content);
                         }
 
+                        if let Ok(mut ed) = editor_arc.lock() {
+                            ed.set_content(&content);
+                        }
+
                         if let Some(w) = app_weak.upgrade() {
                             w.set_active_note_title(title.as_str().into());
                             w.set_active_note_content(content.as_str().into());
@@ -411,11 +563,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 let tabs = to_slint_tabs(tm.active_pane());
                                 w.set_tabs(ModelRc::new(VecModel::from(tabs)));
                             }
+
+                            if let Ok(ed) = editor_arc.lock() {
+                                let ast = to_slint_ast_blocks(&ed.generate_render_blocks());
+                                w.set_ast_blocks(ModelRc::new(VecModel::from(ast)));
+                            }
                         }
                     }
                     gnosis_app::QuickItemType::Command => {
                         info!("Executando comando da paleta: {}", action_id);
-                        // Comandos rápidos executados via paleta
                         if action_id == "cmd_toggle_sidebar" {
                             if let Ok(mut st) = state_arc.lock() {
                                 let col = st.toggle_sidebar();
@@ -429,7 +585,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
 
-            // Fecha modal
             if let Ok(mut qm) = quick_arc.lock() {
                 qm.close();
             }
@@ -455,7 +610,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Suporte a modo headless para testes e CI
     if std::env::var("GNOSIS_HEADLESS").is_ok() {
-        info!("Modo headless detectado. Inicialização do Quick Switcher validada.");
+        info!("Modo headless detectado. Inicialização do Editor e Modo Leitura validada.");
         return Ok(());
     }
 

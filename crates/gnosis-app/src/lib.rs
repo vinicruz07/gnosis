@@ -10,11 +10,13 @@
 #![deny(clippy::expect_used)]
 #![deny(clippy::panic)]
 
+pub mod editor;
 pub mod fuzzy;
 pub mod quick_switcher;
 pub mod state;
 pub mod tabs;
 
+pub use editor::{EditorController, EditorMode, RenderBlockModel};
 pub use fuzzy::{fuzzy_match, FuzzyMatch};
 pub use quick_switcher::{QuickItem, QuickItemType, QuickMode, QuickSwitcherManager};
 pub use state::{AppState, FileTreeEntry, TreeItemModel};

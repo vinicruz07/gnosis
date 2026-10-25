@@ -3,6 +3,7 @@ import { Sidebar, TreeItemData } from "sidebar.slint";
 import { StatusBar } from "statusbar.slint";
 import { TabBar, TabData } from "tabbar.slint";
 import { QuickSwitcherModal, QuickItemData } from "quick_switcher.slint";
+import { RichViewer, RenderBlockData } from "rich_viewer.slint";
 
 export component AppWindow inherits Window {
     title: "Gnosis";
@@ -17,9 +18,11 @@ export component AppWindow inherits Window {
     in property <[TreeItemData]> file_tree: [];
     in-out property <bool> sidebar_collapsed: false;
 
-    // Propriedades do Painel Primário
+    // Propriedades do Editor e Modo de Visualização
     in property <string> active_note_title: "Boas-vindas ao Gnosis";
     in property <string> active_note_content: "# Bem-vindo ao Gnosis\n\nRecompilação de alto desempenho do Obsidian em Rust puro.";
+    in property <bool> is_editing: false;
+    in property <[RenderBlockData]> ast_blocks: [];
 
     // Propriedades do Painel Secundário (Split View)
     in property <bool> is_split: false;
@@ -49,6 +52,11 @@ export component AppWindow inherits Window {
     callback toggle_sidebar();
     callback new_note_requested();
     callback content_changed(string);
+
+    // Callbacks do Editor e Modo de Visualização
+    callback toggle_editor_mode();
+    callback note_text_edited(string);
+    callback task_checkbox_toggled(int);
 
     // Callbacks de Abas, Split e Histórico
     callback tab_selected(int);
@@ -136,64 +144,132 @@ export component AppWindow inherits Window {
                         background: Theme.background;
 
                         VerticalLayout {
-                            padding: 16px;
-                            spacing: 12px;
+                            padding: 0px;
+                            spacing: 0px;
 
-                            HorizontalLayout {
-                                height: 32px;
-                                alignment: space-between;
+                            // Barra de Controle Superior do Painel
+                            Rectangle {
+                                height: 42px;
+                                background: Theme.background;
+                                border-bottom-width: 1px;
+                                border-color: Theme.border;
 
-                                Text {
-                                    text: root.active_note_title;
-                                    color: Theme.text_primary;
-                                    font-size: 18px;
-                                    font-weight: 700;
-                                    vertical-alignment: center;
-                                }
+                                HorizontalLayout {
+                                    padding-left: 16px;
+                                    padding-right: 16px;
+                                    alignment: space-between;
 
-                                // Botão de Atalho para o Quick Switcher no cabeçalho
-                                Rectangle {
-                                    width: 120px;
-                                    height: 26px;
-                                    border-radius: 4px;
-                                    background: Theme.surface;
-                                    border-width: 1px;
-                                    border-color: Theme.border;
+                                    // Título da Nota
+                                    Text {
+                                        text: root.active_note_title;
+                                        color: Theme.text_primary;
+                                        font-size: 16px;
+                                        font-weight: 700;
+                                        vertical-alignment: center;
+                                    }
 
+                                    // Ações Rápidas: Alternar Modo de Edição / Leitura e Quick Switcher
                                     HorizontalLayout {
-                                        padding-left: 8px;
-                                        padding-right: 8px;
-                                        spacing: 6px;
-                                        alignment: center;
+                                        spacing: 8px;
+                                        alignment: end;
 
-                                        Text {
-                                            text: "🔍 Buscar (Ctrl+O)";
-                                            color: Theme.text_muted;
-                                            font-size: 10px;
-                                            vertical-alignment: center;
+                                        // Botão Alternar Edição / Leitura (Ctrl+E)
+                                        Rectangle {
+                                            width: 130px;
+                                            height: 28px;
+                                            border-radius: 4px;
+                                            background: touch_mode.has-hover ? Theme.surface_hover : Theme.surface;
+                                            border-width: 1px;
+                                            border-color: root.is_editing ? Theme.accent : Theme.border;
+                                            y: (parent.height - self.height) / 2;
+
+                                            HorizontalLayout {
+                                                alignment: center;
+                                                spacing: 6px;
+
+                                                Text {
+                                                    text: root.is_editing ? "✏️ Edição" : "👁️ Leitura";
+                                                    color: root.is_editing ? Theme.accent : Theme.text_primary;
+                                                    font-size: 11px;
+                                                    font-weight: 600;
+                                                    vertical-alignment: center;
+                                                }
+
+                                                Text {
+                                                    text: "(Ctrl+E)";
+                                                    color: Theme.text_muted;
+                                                    font-size: 10px;
+                                                    vertical-alignment: center;
+                                                }
+                                            }
+
+                                            touch_mode := TouchArea {
+                                                clicked => { root.toggle_editor_mode(); }
+                                            }
+                                        }
+
+                                        // Botão de Atalho para o Quick Switcher
+                                        Rectangle {
+                                            width: 120px;
+                                            height: 28px;
+                                            border-radius: 4px;
+                                            background: Theme.surface;
+                                            border-width: 1px;
+                                            border-color: Theme.border;
+                                            y: (parent.height - self.height) / 2;
+
+                                            HorizontalLayout {
+                                                padding-left: 8px;
+                                                padding-right: 8px;
+                                                spacing: 6px;
+                                                alignment: center;
+
+                                                Text {
+                                                    text: "🔍 Buscar (Ctrl+O)";
+                                                    color: Theme.text_muted;
+                                                    font-size: 10px;
+                                                    vertical-alignment: center;
+                                                }
+                                            }
+
+                                            TouchArea {
+                                                clicked => { root.open_quick_switcher("files"); }
+                                            }
                                         }
                                     }
+                                }
+                            }
 
-                                    TouchArea {
-                                        clicked => { root.open_quick_switcher("files"); }
+                            // Conteúdo: Modo Edição ou Modo Leitura com Blocos Ricos da AST
+                            if (root.is_editing): Rectangle {
+                                vertical-stretch: 1;
+                                background: Theme.background;
+
+                                Flickable {
+                                    vertical-stretch: 1;
+
+                                    VerticalLayout {
+                                        padding: 16px;
+
+                                        editor_input := TextInput {
+                                            text: root.active_note_content;
+                                            color: Theme.text_primary;
+                                            font-size: 14px;
+                                            single-line: false;
+                                            wrap: word-wrap;
+
+                                            edited => {
+                                                root.note_text_edited(self.text);
+                                            }
+                                        }
                                     }
                                 }
                             }
 
-                            Rectangle {
-                                height: 1px;
-                                background: Theme.border;
-                            }
-
-                            Flickable {
+                            if (!root.is_editing): RichViewer {
                                 vertical-stretch: 1;
-
-                                Text {
-                                    text: root.active_note_content;
-                                    color: Theme.text_secondary;
-                                    font-size: 14px;
-                                    wrap: word-wrap;
-                                }
+                                blocks: root.ast_blocks;
+                                task_toggled(idx) => { root.task_checkbox_toggled(idx); }
                             }
                         }
                     }
