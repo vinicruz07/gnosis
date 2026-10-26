@@ -6,7 +6,7 @@
 //! - Gravação atômica em disco para proteção contra arquivos corrompidos.
 //! - Suporte completo ao modo Desktop (`%USERPROFILE%/.gnosis`) e Portable (`./config/app.json`).
 
-use crate::error::{NativeFsError, Result};
+use crate::error::Result;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};

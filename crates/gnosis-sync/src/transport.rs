@@ -6,7 +6,7 @@
 //! - Criptografia ponta a ponta (E2EE) garantida antes de qualquer dado tocar a rede ou o store.
 
 use crate::crypto::{CryptoEnvelope, HandshakeChallenge, HandshakeResponse, RoomHandshake, RoomKey, RoomSecurity};
-use crate::error::{Result, SyncError};
+use crate::error::Result;
 use crate::merkle::VaultMerkleTree;
 use gnosis_core::VaultPath;
 use serde::{Deserialize, Serialize};

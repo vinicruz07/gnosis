@@ -15,7 +15,6 @@ use std::sync::{Arc, RwLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 use yrs::{
     updates::decoder::Decode,
-    updates::encoder::Encode,
     Doc, GetString, ReadTxn, StateVector, Text, Transact, Update,
 };
 
@@ -79,11 +78,10 @@ impl CollaborativeDoc {
     pub fn insert(&self, offset: u32, text_to_insert: &str) -> Vec<u8> {
         let text = self.doc.get_or_insert_text("content");
         let mut txn = self.doc.transact_mut();
-        let state_before = txn.state_vector();
 
         text.insert(&mut txn, offset, text_to_insert);
 
-        txn.encode_update_v1(&state_before)
+        txn.encode_update_v1()
     }
 
     /// Remove um intervalo de texto a partir de um deslocamento.
@@ -92,11 +90,10 @@ impl CollaborativeDoc {
     pub fn delete(&self, offset: u32, len: u32) -> Vec<u8> {
         let text = self.doc.get_or_insert_text("content");
         let mut txn = self.doc.transact_mut();
-        let state_before = txn.state_vector();
 
         text.remove_range(&mut txn, offset, len);
 
-        txn.encode_update_v1(&state_before)
+        txn.encode_update_v1()
     }
 
     /// Aplica uma atualização delta recebida de outro nó na rede local ou internet.
@@ -107,8 +104,7 @@ impl CollaborativeDoc {
             .map_err(|e| SyncError::Crdt(format!("Erro ao decodificar update CRDT: {:?}", e)))?;
 
         let mut txn = self.doc.transact_mut();
-        txn.apply_update(update)
-            .map_err(|e| SyncError::Crdt(format!("Erro ao aplicar update CRDT: {:?}", e)))?;
+        txn.apply_update(update);
 
         Ok(())
     }
