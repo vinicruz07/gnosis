@@ -29,8 +29,8 @@ pub fn fuzzy_match(query: &str, target: &str) -> Option<FuzzyMatch> {
     }
 
     let mut q_idx = 0;
-    let mut score = 0;
-    let mut consecutive_matches = 0;
+    let mut score: i32 = 0;
+    let mut consecutive_matches: i32 = 0;
     let mut matched_indices = Vec::with_capacity(query_chars.len());
     let mut prev_matched_idx = None;
 
@@ -39,7 +39,7 @@ pub fn fuzzy_match(query: &str, target: &str) -> Option<FuzzyMatch> {
             matched_indices.push(t_idx);
 
             // Pontuação base por caractere correspondido
-            let mut char_score = 10;
+            let mut char_score: i32 = 10;
 
             // Bônus por correspondência consecutiva
             if let Some(prev) = prev_matched_idx {

@@ -318,6 +318,16 @@ impl GraphPhysicsSimulator {
             .map(|p| (p.id.as_str(), p.pos))
             .collect()
     }
+
+    /// Retorna uma referência imutável à configuração ativa do simulador físico.
+    pub fn config(&self) -> &PhysicsConfig {
+        &self.config
+    }
+
+    /// Define a posição 2D de um nó pelo seu identificador e desperta a simulação.
+    pub fn set_position(&mut self, id: &str, pos: Point2D) -> bool {
+        self.pin_node(id, pos)
+    }
 }
 
 #[cfg(test)]

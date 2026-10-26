@@ -126,7 +126,7 @@ impl GraphViewController {
 
         self.simulator = GraphPhysicsSimulator::from_knowledge_graph(
             &self.active_graph,
-            self.simulator.config.clone(),
+            self.simulator.config().clone(),
         );
 
         for (id, pos) in old_positions {
