@@ -72,12 +72,15 @@ impl SyncDialogController {
     /// Conecta o usuário a uma sala com base no código fornecido.
     /// Valida o formato e deriva a chave simétrica de 256 bits com Argon2id.
     pub fn join_room(&mut self, code: &str, user_name: &str) -> Result<String, String> {
-        let normalized = normalize_pairing_code(code).map_err(|e| format!("Código de sala inválido: {}", e))?;
+        let normalized = normalize_pairing_code(code);
+        if !normalized.starts_with("GNO") || normalized.len() < 7 {
+            return Err(format!("Código de sala inválido: {}", code));
+        }
 
         // Deriva envelope criptográfico ponta a ponta
-        let security = RoomSecurity::from_pairing_code(&normalized);
+        let security = RoomSecurity::new("room", Some(normalized.clone()));
         self.security = Some(security);
-        self.current_room_code = Some(normalized.clone());
+        self.current_room_code = Some(code.trim().to_string());
         self.is_connected = true;
         self.user_display_name = if user_name.trim().is_empty() {
             "Você".to_string()

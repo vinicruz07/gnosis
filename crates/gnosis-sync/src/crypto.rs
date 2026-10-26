@@ -84,6 +84,11 @@ impl RoomSecurity {
         }
     }
 
+    /// Cria uma configuração de segurança para uma sala a partir de um código de pareamento.
+    pub fn from_pairing_code(code: &str) -> Self {
+        Self::new("room", Some(code.to_string()))
+    }
+
     /// Deriva a chave simétrica [`RoomKey`] desta sala.
     pub fn derive_key(&self) -> Result<RoomKey> {
         RoomKey::derive(&self.pairing_code, &self.salt)
