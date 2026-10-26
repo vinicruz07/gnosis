@@ -62,7 +62,7 @@ impl EditorController {
 
         Self {
             mode: EditorMode::Reading,
-            buffer: NoteBuffer::from_text(&content),
+            buffer: NoteBuffer::from_str(&content),
             note_path: p,
             note_title: title.to_string(),
         }
@@ -76,7 +76,7 @@ impl EditorController {
 
     /// Atualiza o conteúdo textual no buffer de alta performance Ropey.
     pub fn set_content(&mut self, new_text: &str) {
-        self.buffer = NoteBuffer::from_text(new_text);
+        self.buffer = NoteBuffer::from_str(new_text);
     }
 
     /// Retorna o conteúdo textual completo.

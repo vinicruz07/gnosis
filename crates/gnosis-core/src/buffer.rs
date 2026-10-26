@@ -90,9 +90,45 @@ impl NoteBuffer {
         Some(slice.to_string())
     }
 
+    /// Cria um buffer a partir de uma fatia de texto UTF-8 (alias de conveniência).
+    pub fn from_text(text: &str) -> Self {
+        Self::from_str(text)
+    }
+
+    /// Retorna a quantidade total de palavras no documento sem alocações extras.
+    pub fn word_count(&self) -> usize {
+        let mut count = 0;
+        let mut in_word = false;
+        for chunk in self.rope.chunks() {
+            for c in chunk.chars() {
+                if c.is_whitespace() {
+                    in_word = false;
+                } else if !in_word {
+                    in_word = true;
+                    count += 1;
+                }
+            }
+        }
+        count
+    }
+
+    /// Retorna o número total de caracteres no documento em O(1).
+    pub fn char_count(&self) -> usize {
+        self.rope.len_chars()
+    }
+
     /// Converte o buffer inteiro em uma `String`.
     pub fn to_string_content(&self) -> String {
         self.rope.to_string()
+    }
+}
+
+impl fmt::Display for NoteBuffer {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for chunk in self.rope.chunks() {
+            write!(f, "{}", chunk)?;
+        }
+        Ok(())
     }
 }
 
@@ -101,6 +137,7 @@ impl fmt::Debug for NoteBuffer {
         f.debug_struct("NoteBuffer")
             .field("chars", &self.len_chars())
             .field("lines", &self.len_lines())
+            .field("words", &self.word_count())
             .finish()
     }
 }
@@ -154,5 +191,15 @@ mod tests {
         assert!(buf.len_lines() > 5);
 
         Ok(())
+    }
+
+    #[test]
+    fn test_buffer_display_and_counts() {
+        let text = "O filósofo contempla o cosmos infinito.\nSegunda linha aqui.";
+        let buf = NoteBuffer::from_text(text);
+
+        assert_eq!(buf.char_count(), text.chars().count());
+        assert_eq!(buf.word_count(), 8);
+        assert_eq!(buf.to_string(), text);
     }
 }
