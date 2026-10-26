@@ -183,7 +183,7 @@ impl VaultConfig {
     pub async fn save_to_vfs<F: FileSystemProvider>(&self, vfs: &F) -> Result<()> {
         let json_bytes = self.to_json_pretty()?.into_bytes();
         let path = VaultPath::parse(GNOSIS_CONFIG_PATH)?;
-        vfs.write_file(&path, &json_bytes).await
+        vfs.write_file_atomic(&path, &json_bytes).await
     }
 
     /// Carrega a configuração do Vault a partir do VFS.
@@ -194,7 +194,7 @@ impl VaultConfig {
     pub async fn load_from_vfs<F: FileSystemProvider>(vfs: &F) -> Result<Self> {
         let gnosis_path = VaultPath::parse(GNOSIS_CONFIG_PATH)?;
 
-        if vfs.exists(&gnosis_path).await {
+        if vfs.exists(&gnosis_path).await? {
             let data = vfs.read_file(&gnosis_path).await?;
             let json_str = String::from_utf8(data).map_err(|e| CoreError::Utf8Error(e.to_string()))?;
             return Self::from_json(&json_str);
@@ -205,7 +205,7 @@ impl VaultConfig {
             Err(_) => return Ok(Self::default()),
         };
 
-        if vfs.exists(&obsidian_path).await {
+        if vfs.exists(&obsidian_path).await? {
             let data = vfs.read_file(&obsidian_path).await?;
             if let Ok(json_str) = String::from_utf8(data) {
                 if let Ok(migrated) = Self::parse_obsidian_workspace(&json_str) {

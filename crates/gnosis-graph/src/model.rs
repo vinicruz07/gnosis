@@ -170,16 +170,16 @@ impl KnowledgeGraph {
     pub fn populate_from_notes(&mut self, notes: &[VaultNote]) {
         // 1. Cadastra todas as notas conhecidas
         for note in notes {
-            let id = note.path.as_str();
-            self.add_or_update_node(id, &note.title, NodeType::Note, Some(note.path.clone()));
+            let id = note.path().as_str();
+            self.add_or_update_node(id, note.title(), NodeType::Note, Some(note.path().clone()));
         }
 
         // 2. Conecta arestas de Wikilinks e Tags
         for note in notes {
-            let source_id = note.path.as_str();
+            let source_id = note.path().as_str();
 
             // Wikilinks
-            for link in &note.outgoing_links {
+            for link in note.links() {
                 let edge_type = if link.is_embed {
                     EdgeType::Embed
                 } else {
@@ -196,7 +196,7 @@ impl KnowledgeGraph {
             }
 
             // Tags
-            for tag in &note.tags {
+            for tag in note.tags() {
                 let tag_id = format!("#{}", tag);
                 self.add_or_update_node(&tag_id, &tag_id, NodeType::Tag, None);
                 let _ = self.add_edge(
@@ -308,6 +308,24 @@ impl KnowledgeGraph {
     /// Retorna a referência interna ao grafo `petgraph`.
     pub fn inner_graph(&self) -> &DiGraph<GraphNode, GraphEdge> {
         &self.graph
+    }
+
+    /// Retorna todos os nós cadastrados no grafo.
+    pub fn all_nodes(&self) -> Vec<&GraphNode> {
+        self.graph.node_weights().collect()
+    }
+
+    /// Retorna todas as arestas do grafo como tuplas (origem_id, destino_id, &GraphEdge).
+    pub fn all_edges(&self) -> Vec<(&str, &str, &GraphEdge)> {
+        use petgraph::visit::EdgeRef;
+        self.graph
+            .edge_references()
+            .filter_map(|e| {
+                let source = self.graph.node_weight(e.source())?;
+                let target = self.graph.node_weight(e.target())?;
+                Some((source.id.as_str(), target.id.as_str(), e.weight()))
+            })
+            .collect()
     }
 }
 

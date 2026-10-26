@@ -5,6 +5,7 @@ import { TabBar, TabData } from "tabbar.slint";
 import { QuickSwitcherModal, QuickItemData } from "quick_switcher.slint";
 import { RichViewer, RenderBlockData } from "rich_viewer.slint";
 import { GraphCanvas, GraphNodeSlint, GraphEdgeSlint } from "graph_canvas.slint";
+import { SyncModal, PeerData } from "sync_modal.slint";
 
 export component AppWindow inherits Window {
     title: "Gnosis";
@@ -48,6 +49,13 @@ export component AppWindow inherits Window {
     in property <string> quick_switcher_placeholder: "Digite para buscar uma nota (Ctrl+O)...";
     in property <[QuickItemData]> quick_items: [];
     in property <int> quick_selected_index: 0;
+
+    // Propriedades do Modal de Sincronização P2P
+    in property <bool> sync_modal_open: false;
+    in property <bool> sync_modal_connected: false;
+    in property <string> sync_modal_room_code: "";
+    in property <string> sync_modal_status: "Pronto para conectar.";
+    in property <[PeerData]> sync_modal_peers: [];
 
     // Propriedades da Barra de Status
     in property <string> sync_status: "Sincronizado (Local)";
@@ -94,6 +102,13 @@ export component AppWindow inherits Window {
     callback quick_query_changed(string);
     callback quick_item_clicked(int);
     callback quick_close_requested();
+
+    // Callbacks de Sincronização P2P e Salas
+    callback open_sync_modal();
+    callback sync_join_room(string);
+    callback sync_generate_code();
+    callback sync_leave_room();
+    callback sync_close_modal();
 
     // Layout Principal
     VerticalLayout {
@@ -410,6 +425,7 @@ export component AppWindow inherits Window {
             word_count: root.word_count;
             char_count: root.char_count;
             theme_clicked => { root.cycle_theme(); }
+            sync_clicked => { root.open_sync_modal(); }
         }
     }
 
@@ -423,5 +439,19 @@ export component AppWindow inherits Window {
         query_changed(q) => { root.quick_query_changed(q); }
         item_clicked(idx) => { root.quick_item_clicked(idx); }
         close_requested => { root.quick_close_requested(); }
+    }
+
+    // Modal Suspenso Flutuante (Sincronização P2P e Salas Colaborativas)
+    SyncModal {
+        is_open: root.sync_modal_open;
+        is_connected: root.sync_modal_connected;
+        room_code: root.sync_modal_room_code;
+        status_message: root.sync_modal_status;
+        peers: root.sync_modal_peers;
+
+        join_room_requested(code) => { root.sync_join_room(code); }
+        generate_code_requested => { root.sync_generate_code(); }
+        leave_room_requested => { root.sync_leave_room(); }
+        close_modal => { root.sync_close_modal(); }
     }
 }

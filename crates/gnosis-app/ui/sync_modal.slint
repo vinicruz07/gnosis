@@ -1,0 +1,293 @@
+import { Theme } from "theme.slint";
+
+export struct PeerData {
+    id: string,
+    name: string,
+    color_hex: string,
+    active_note: string,
+    is_online: bool,
+}
+
+export component SyncModal inherits Rectangle {
+    in property <bool> is_open: false;
+    in property <bool> is_connected: false;
+    in property <string> room_code: "";
+    in property <string> status_message: "Pronto para conectar.";
+    in property <[PeerData]> peers: [];
+
+    callback join_room_requested(string);
+    callback generate_code_requested();
+    callback leave_room_requested();
+    callback close_modal();
+
+    background: #000000aa;
+    width: 100%;
+    height: 100%;
+    visible: root.is_open;
+
+    TouchArea {
+        clicked => { root.close_modal(); }
+    }
+
+    Rectangle {
+        width: 520px;
+        height: 430px;
+        background: Theme.sidebar_bg;
+        border-radius: 10px;
+        border-width: 1px;
+        border-color: Theme.accent;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+
+        VerticalLayout {
+            padding: 18px;
+            spacing: 12px;
+
+            // Cabeçalho do Modal
+            HorizontalLayout {
+                alignment: space-between;
+
+                VerticalLayout {
+                    spacing: 2px;
+                    alignment: center;
+
+                    HorizontalLayout {
+                        spacing: 6px;
+                        Text {
+                            text: "🔒";
+                            font-size: 16px;
+                            vertical-alignment: center;
+                        }
+                        Text {
+                            text: "Salas Compartilhadas & Sync P2P";
+                            color: Theme.text_primary;
+                            font-size: 15px;
+                            font-weight: 700;
+                            vertical-alignment: center;
+                        }
+                    }
+
+                    Text {
+                        text: "Criptografia Ponta a Ponta (E2EE) • Argon2id + ChaCha20";
+                        color: Theme.text_muted;
+                        font-size: 11px;
+                    }
+                }
+
+                // Botão Fechar
+                Rectangle {
+                    width: 24px;
+                    height: 24px;
+                    border-radius: 4px;
+                    background: touch_x.has-hover ? Theme.surface_hover : transparent;
+
+                    Text {
+                        text: "✕";
+                        color: Theme.text_muted;
+                        font-size: 12px;
+                        horizontal-alignment: center;
+                        vertical-alignment: center;
+                    }
+
+                    touch_x := TouchArea {
+                        clicked => { root.close_modal(); }
+                    }
+                }
+            }
+
+            Rectangle {
+                height: 1px;
+                background: Theme.border;
+            }
+
+            // Entrada do Código da Sala
+            VerticalLayout {
+                spacing: 6px;
+
+                Text {
+                    text: "Código de Pareamento da Sala:";
+                    color: Theme.text_secondary;
+                    font-size: 12px;
+                    font-weight: 600;
+                }
+
+                HorizontalLayout {
+                    spacing: 8px;
+
+                    Rectangle {
+                        horizontal-stretch: 1;
+                        height: 36px;
+                        border-radius: 6px;
+                        background: Theme.background;
+                        border-width: 1px;
+                        border-color: Theme.border;
+
+                        HorizontalLayout {
+                            padding-left: 10px;
+                            padding-right: 10px;
+
+                            input_code := TextInput {
+                                text: root.room_code;
+                                color: Theme.accent;
+                                font-size: 14px;
+                                font-weight: 700;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+
+                    // Botão Gerar Código
+                    Rectangle {
+                        width: 90px;
+                        height: 36px;
+                        border-radius: 6px;
+                        background: Theme.surface;
+                        border-width: 1px;
+                        border-color: Theme.border;
+
+                        Text {
+                            text: "🎲 Gerar";
+                            color: Theme.text_primary;
+                            font-size: 12px;
+                            font-weight: 600;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+
+                        TouchArea {
+                            clicked => { root.generate_code_requested(); }
+                        }
+                    }
+
+                    // Botão Conectar / Desconectar
+                    Rectangle {
+                        width: 100px;
+                        height: 36px;
+                        border-radius: 6px;
+                        background: root.is_connected ? Theme.danger : Theme.accent;
+
+                        Text {
+                            text: root.is_connected ? "Desconectar" : "🔗 Conectar";
+                            color: root.is_connected ? #ffffff : #111116;
+                            font-size: 12px;
+                            font-weight: 700;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+
+                        TouchArea {
+                            clicked => {
+                                if (root.is_connected) {
+                                    root.leave_room_requested();
+                                } else {
+                                    root.join_room_requested(input_code.text);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Seção de Participantes Conectados (Peer Presence)
+            VerticalLayout {
+                vertical-stretch: 1;
+                spacing: 6px;
+
+                Text {
+                    text: "Colaboradores Ativos na Sala (" + root.peers.length + "):";
+                    color: Theme.text_secondary;
+                    font-size: 12px;
+                    font-weight: 600;
+                }
+
+                Rectangle {
+                    vertical-stretch: 1;
+                    background: Theme.background;
+                    border-radius: 6px;
+                    border-width: 1px;
+                    border-color: Theme.border;
+
+                    Flickable {
+                        vertical-stretch: 1;
+
+                        VerticalLayout {
+                            padding: 8px;
+                            spacing: 6px;
+                            alignment: start;
+
+                            if (root.peers.length == 0): Text {
+                                text: "Nenhum colaborador online no momento.";
+                                color: Theme.text_muted;
+                                font-size: 12px;
+                                horizontal-alignment: center;
+                            }
+
+                            for peer in root.peers: Rectangle {
+                                height: 32px;
+                                border-radius: 4px;
+                                background: Theme.surface;
+
+                                HorizontalLayout {
+                                    padding-left: 10px;
+                                    padding-right: 10px;
+                                    spacing: 8px;
+                                    alignment: space-between;
+
+                                    HorizontalLayout {
+                                        spacing: 8px;
+                                        alignment: start;
+
+                                        // Bolinha de Presença com a Cor do Cursor do Peer
+                                        Rectangle {
+                                            width: 10px;
+                                            height: 10px;
+                                            border-radius: 5px;
+                                            background: Theme.success;
+                                            y: (parent.height - self.height) / 2;
+                                        }
+
+                                        Text {
+                                            text: peer.name;
+                                            color: Theme.text_primary;
+                                            font-size: 12px;
+                                            font-weight: 600;
+                                            vertical-alignment: center;
+                                        }
+                                    }
+
+                                    // Nota ativa do colega
+                                    Text {
+                                        text: "Editando: " + peer.active_note;
+                                        color: Theme.text_muted;
+                                        font-size: 11px;
+                                        vertical-alignment: center;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Mensagem de Status da Conexão
+            Rectangle {
+                height: 28px;
+                border-radius: 4px;
+                background: Theme.surface;
+
+                HorizontalLayout {
+                    padding-left: 10px;
+                    padding-right: 10px;
+                    alignment: start;
+
+                    Text {
+                        text: "ℹ️ " + root.status_message;
+                        color: Theme.text_muted;
+                        font-size: 11px;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+        }
+    }
+}

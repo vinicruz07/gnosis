@@ -7,7 +7,7 @@
 //!   e filtrar nós por tags específicas ou prefixo de caminho/pasta.
 //! - **Agrupamento Temático**: Atribuição de grupos ou paletas de cores para renderização.
 
-use crate::model::{EdgeType, KnowledgeGraph, NodeType};
+use crate::model::{KnowledgeGraph, NodeType};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet, VecDeque};
 
@@ -114,7 +114,7 @@ impl SubgraphManager {
         let mut filtered = KnowledgeGraph::new();
 
         let orphans: HashSet<String> = if config.hide_orphans {
-            graph.orphan_notes().into_iter().collect()
+            graph.orphan_notes().into_iter().map(|n| n.id.clone()).collect()
         } else {
             HashSet::new()
         };
@@ -272,6 +272,7 @@ impl SubgraphManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::EdgeType;
 
     fn build_sample_graph() -> KnowledgeGraph {
         let mut graph = KnowledgeGraph::new();

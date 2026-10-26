@@ -9,11 +9,11 @@
 #![deny(clippy::panic)]
 
 use gnosis_app::{
-    AppState, AppWindow, EditorController, EditorMode, EditorPane, GraphEdgeSlint,
-    GraphEdgeVisual, GraphNodeSlint, GraphNodeVisual, GraphViewController, QuickItem,
-    QuickItemData, QuickMode, QuickSwitcherManager, RenderBlockData,
-    RenderBlockModel, SplitDirection, TabData, TabManager, Theme, ThemeColors,
-    ThemeManager, TreeItemData, TreeItemModel,
+    AppState, AppWindow, ConnectedPeerInfo, EditorController, EditorMode, EditorPane,
+    GraphEdgeSlint, GraphEdgeVisual, GraphNodeSlint, GraphNodeVisual, GraphViewController,
+    PeerData, QuickItem, QuickItemData, QuickMode, QuickSwitcherManager, RenderBlockData,
+    RenderBlockModel, SplitDirection, SyncDialogController, TabData, TabManager, Theme,
+    ThemeColors, ThemeManager, TreeItemData, TreeItemModel,
 };
 use gnosis_graph::model::{EdgeType, KnowledgeGraph, NodeType};
 use slint::{ComponentHandle, ModelRc, VecModel};
@@ -102,6 +102,19 @@ fn to_slint_ast_blocks(blocks: &[RenderBlockModel]) -> Vec<RenderBlockData> {
             text: b.text.as_str().into(),
             extra: b.extra.as_str().into(),
             is_checked: b.is_checked,
+        })
+        .collect()
+}
+
+fn to_slint_peers(peers: &[ConnectedPeerInfo]) -> Vec<PeerData> {
+    peers
+        .iter()
+        .map(|p| PeerData {
+            id: p.peer_id.as_str().into(),
+            name: p.name.as_str().into(),
+            color_hex: p.color_hex.as_str().into(),
+            active_note: p.active_note.as_str().into(),
+            is_online: p.is_online,
         })
         .collect()
 }
@@ -230,6 +243,13 @@ fn main() {
     app.set_quick_switcher_open(false);
     app.set_is_graph_view(false);
 
+    let sync_ctrl = SyncDialogController::new();
+    app.set_sync_modal_open(false);
+    app.set_sync_modal_connected(false);
+    app.set_sync_modal_room_code("".into());
+    app.set_sync_modal_status("Pronto para conectar.".into());
+    app.set_sync_modal_peers(ModelRc::new(VecModel::from(to_slint_peers(&sync_ctrl.peers))));
+
     let initial_tree = to_slint_tree(&state.visible_tree_items());
     app.set_file_tree(ModelRc::new(VecModel::from(initial_tree)));
 
@@ -251,6 +271,7 @@ fn main() {
     let quick_arc = Arc::new(Mutex::new(quick_mgr));
     let graph_arc = Arc::new(Mutex::new(graph_ctrl));
     let theme_arc = Arc::new(Mutex::new(theme_mgr));
+    let sync_arc = Arc::new(Mutex::new(sync_ctrl));
     let app_weak = app.as_weak();
 
     // Callback: Alternar Tema Místico em Tempo Real (Ctrl+Shift+T ou clique na StatusBar)
@@ -912,6 +933,10 @@ fn main() {
                                     apply_theme_to_slint(&w, &next);
                                 }
                             }
+                        } else if action_id == "cmd_sync_now" {
+                            if let Some(w) = app_weak.upgrade() {
+                                w.set_sync_modal_open(true);
+                            }
                         }
                     }
                     _ => {}
@@ -937,6 +962,88 @@ fn main() {
             }
             if let Some(w) = app_weak.upgrade() {
                 w.set_quick_switcher_open(false);
+            }
+        });
+    }
+
+    // Callback: Abrir Diálogo de Sincronização P2P (via clique na StatusBar ou comando)
+    {
+        let app_weak = app_weak.clone();
+        app.on_open_sync_modal(move || {
+            if let Some(w) = app_weak.upgrade() {
+                w.set_sync_modal_open(true);
+            }
+        });
+    }
+
+    // Callback: Gerar Código de Pareamento P2P (GNO-XXXX-XXXX)
+    {
+        let app_weak = app_weak.clone();
+        let sync_arc = Arc::clone(&sync_arc);
+        app.on_sync_generate_code(move || {
+            if let Ok(mut sc) = sync_arc.lock() {
+                let code = sc.generate_code();
+                if let Some(w) = app_weak.upgrade() {
+                    w.set_sync_modal_room_code(code.as_str().into());
+                    w.set_sync_modal_status("Novo código gerado. Compartilhe com seus colaboradores.".into());
+                }
+            }
+        });
+    }
+
+    // Callback: Entrar em Sala P2P via Código de Pareamento
+    {
+        let app_weak = app_weak.clone();
+        let sync_arc = Arc::clone(&sync_arc);
+        app.on_sync_join_room(move |code| {
+            if let Ok(mut sc) = sync_arc.lock() {
+                match sc.join_room(code.as_str(), "Você") {
+                    Ok(room_code) => {
+                        let peers = to_slint_peers(&sc.peers);
+                        if let Some(w) = app_weak.upgrade() {
+                            w.set_sync_modal_connected(true);
+                            w.set_sync_modal_room_code(room_code.as_str().into());
+                            w.set_sync_modal_status(format!("Conectado à sala {} com criptografia ChaCha20-Poly1305 E2EE.", room_code).into());
+                            w.set_sync_modal_peers(ModelRc::new(VecModel::from(peers)));
+                            w.set_sync_status(format!("P2P Conectado ({})", room_code).into());
+                            w.set_sync_color(parse_color("#10b981"));
+                        }
+                    }
+                    Err(err) => {
+                        if let Some(w) = app_weak.upgrade() {
+                            w.set_sync_modal_status(format!("Falha na conexão: {}", err).into());
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    // Callback: Desconectar da Sala P2P
+    {
+        let app_weak = app_weak.clone();
+        let sync_arc = Arc::clone(&sync_arc);
+        app.on_sync_leave_room(move || {
+            if let Ok(mut sc) = sync_arc.lock() {
+                sc.leave_room();
+                let peers = to_slint_peers(&sc.peers);
+                if let Some(w) = app_weak.upgrade() {
+                    w.set_sync_modal_connected(false);
+                    w.set_sync_modal_status("Desconectado da sala P2P. Modo local ativo.".into());
+                    w.set_sync_modal_peers(ModelRc::new(VecModel::from(peers)));
+                    w.set_sync_status("Sincronizado (Local)".into());
+                    w.set_sync_color(parse_color("#10b981"));
+                }
+            }
+        });
+    }
+
+    // Callback: Fechar Diálogo de Sincronização P2P
+    {
+        let app_weak = app_weak.clone();
+        app.on_sync_close_modal(move || {
+            if let Some(w) = app_weak.upgrade() {
+                w.set_sync_modal_open(false);
             }
         });
     }

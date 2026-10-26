@@ -8,6 +8,7 @@ export component StatusBar inherits Rectangle {
     in property <int> char_count: 0;
 
     callback theme_clicked();
+    callback sync_clicked();
 
     height: 28px;
     background: Theme.sidebar_bg;
@@ -38,24 +39,37 @@ export component StatusBar inherits Rectangle {
             }
         }
 
-        // Centro: Status da Sincronização P2P / BYOS
-        HorizontalLayout {
-            spacing: 6px;
-            alignment: center;
+        // Centro: Status da Sincronização P2P / BYOS (Clicável para abrir modal)
+        Rectangle {
+            height: 22px;
+            border-radius: 4px;
+            background: touch_sync.has-hover ? Theme.surface_hover : transparent;
+            padding-left: 8px;
+            padding-right: 8px;
+            y: (parent.height - self.height) / 2;
 
-            Rectangle {
-                width: 8px;
-                height: 8px;
-                border-radius: 4px;
-                background: root.sync_color;
-                y: (parent.height - self.height) / 2;
+            HorizontalLayout {
+                spacing: 6px;
+                alignment: center;
+
+                Rectangle {
+                    width: 8px;
+                    height: 8px;
+                    border-radius: 4px;
+                    background: root.sync_color;
+                    y: (parent.height - self.height) / 2;
+                }
+
+                Text {
+                    text: root.sync_status;
+                    color: Theme.text_muted;
+                    font-size: 11px;
+                    vertical-alignment: center;
+                }
             }
 
-            Text {
-                text: root.sync_status;
-                color: Theme.text_muted;
-                font-size: 11px;
-                vertical-alignment: center;
+            touch_sync := TouchArea {
+                clicked => { root.sync_clicked(); }
             }
         }
 

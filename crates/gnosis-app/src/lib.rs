@@ -15,6 +15,7 @@ pub mod fuzzy;
 pub mod graph_view;
 pub mod quick_switcher;
 pub mod state;
+pub mod sync_dialog;
 pub mod tabs;
 pub mod theme;
 
@@ -23,6 +24,7 @@ pub use fuzzy::{fuzzy_match, FuzzyMatch};
 pub use graph_view::{GraphEdgeVisual, GraphNodeVisual, GraphViewController, PhysicsStatus};
 pub use quick_switcher::{QuickItem, QuickItemType, QuickMode, QuickSwitcherManager};
 pub use state::{AppState, FileTreeEntry, TreeItemModel};
+pub use sync_dialog::{ConnectedPeerInfo, SyncDialogController};
 pub use tabs::{EditorPane, NavigationHistory, SplitDirection, TabItem, TabManager};
 pub use theme::{ThemeColors, ThemeManager};
 

@@ -8,6 +8,7 @@
 //! - Suporte a fixação e arraste de nós pelo usuário com reativação instantânea (`wake_up`).
 
 use crate::model::KnowledgeGraph;
+use petgraph::visit::EdgeRef;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
