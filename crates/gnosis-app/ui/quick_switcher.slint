@@ -149,8 +149,13 @@ export component QuickSwitcherModal inherits Rectangle {
             // Rodapé Informativo com Dicas de Atalhos
             Rectangle {
                 height: 24px;
-                border-top-width: 1px;
-                border-color: Theme.border;
+
+                Rectangle {
+                    y: 0px;
+                    height: 1px;
+                    width: 100%;
+                    background: Theme.border;
+                }
 
                 HorizontalLayout {
                     alignment: space-between;

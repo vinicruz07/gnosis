@@ -12,8 +12,13 @@ export component StatusBar inherits Rectangle {
 
     height: 28px;
     background: Theme.sidebar_bg;
-    border-top-width: 1px;
-    border-color: Theme.border;
+
+    Rectangle {
+        y: 0px;
+        height: 1px;
+        width: 100%;
+        background: Theme.border;
+    }
 
     HorizontalLayout {
         padding-left: 12px;
@@ -44,11 +49,11 @@ export component StatusBar inherits Rectangle {
             height: 22px;
             border-radius: 4px;
             background: touch_sync.has-hover ? Theme.surface_hover : transparent;
-            padding-left: 8px;
-            padding-right: 8px;
             y: (parent.height - self.height) / 2;
 
             HorizontalLayout {
+                padding-left: 8px;
+                padding-right: 8px;
                 spacing: 6px;
                 alignment: center;
 
@@ -80,14 +85,14 @@ export component StatusBar inherits Rectangle {
 
             // Botão Seletor de Tema Místico (Ctrl+Shift+T)
             Rectangle {
-                padding-left: 6px;
-                padding-right: 6px;
                 height: 20px;
                 border-radius: 4px;
                 background: touch_theme.has-hover ? Theme.surface_hover : transparent;
                 y: (parent.height - self.height) / 2;
 
                 HorizontalLayout {
+                    padding-left: 6px;
+                    padding-right: 6px;
                     spacing: 4px;
                     alignment: center;
 

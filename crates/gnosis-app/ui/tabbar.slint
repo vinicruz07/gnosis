@@ -24,8 +24,13 @@ export component TabBar inherits Rectangle {
 
     height: 36px;
     background: Theme.sidebar_bg;
-    border-bottom-width: 1px;
-    border-color: Theme.border;
+
+    Rectangle {
+        y: parent.height - 1px;
+        height: 1px;
+        width: 100%;
+        background: Theme.border;
+    }
 
     HorizontalLayout {
         padding-left: 6px;

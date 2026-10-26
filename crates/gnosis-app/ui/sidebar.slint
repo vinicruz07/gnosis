@@ -21,11 +21,16 @@ export component Sidebar inherits Rectangle {
     callback new_note_requested();
 
     background: Theme.sidebar_bg;
-    border-right-width: 1px;
-    border-color: Theme.border;
-
     width: root.is_collapsed ? 0px : 240px;
     animate width { duration: 150ms; easing: ease-out; }
+
+    // Divisória vertical direita
+    Rectangle {
+        x: parent.width - 1px;
+        width: 1px;
+        height: 100%;
+        background: Theme.border;
+    }
 
     VerticalLayout {
         padding: 8px;

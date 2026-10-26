@@ -41,8 +41,8 @@ export component GraphCanvas inherits Rectangle {
     for edge in root.edges: Path {
         stroke: #45475a;
         stroke-width: 1.5px;
-        MoveTo { x: edge.source_x * 1px; y: edge.source_y * 1px; }
-        LineTo { x: edge.target_x * 1px; y: edge.target_y * 1px; }
+        MoveTo { x: edge.source_x; y: edge.source_y; }
+        LineTo { x: edge.target_x; y: edge.target_y; }
     }
 
     // 2. Camada de Partículas/Nós (Círculos vetoriais com rótulo)
@@ -190,18 +190,22 @@ export component GraphCanvas inherits Rectangle {
 
             // Filtro: Ocultar Órfãos
             Rectangle {
-                padding-left: 6px;
-                padding-right: 6px;
                 height: 22px;
                 border-radius: 4px;
                 background: root.hide_orphans ? Theme.accent : Theme.surface;
 
-                Text {
-                    text: "Órfãos";
-                    color: root.hide_orphans ? #11111b : Theme.text_secondary;
-                    font-size: 11px;
-                    font-weight: 600;
-                    vertical-alignment: center;
+                HorizontalLayout {
+                    padding-left: 6px;
+                    padding-right: 6px;
+                    alignment: center;
+
+                    Text {
+                        text: "Órfãos";
+                        color: root.hide_orphans ? #11111b : Theme.text_secondary;
+                        font-size: 11px;
+                        font-weight: 600;
+                        vertical-alignment: center;
+                    }
                 }
 
                 TouchArea {
@@ -211,18 +215,22 @@ export component GraphCanvas inherits Rectangle {
 
             // Filtro: Ocultar Fantasmas (Não Resolvidos)
             Rectangle {
-                padding-left: 6px;
-                padding-right: 6px;
                 height: 22px;
                 border-radius: 4px;
                 background: root.hide_unresolved ? Theme.accent : Theme.surface;
 
-                Text {
-                    text: "Fantasmas";
-                    color: root.hide_unresolved ? #11111b : Theme.text_secondary;
-                    font-size: 11px;
-                    font-weight: 600;
-                    vertical-alignment: center;
+                HorizontalLayout {
+                    padding-left: 6px;
+                    padding-right: 6px;
+                    alignment: center;
+
+                    Text {
+                        text: "Fantasmas";
+                        color: root.hide_unresolved ? #11111b : Theme.text_secondary;
+                        font-size: 11px;
+                        font-weight: 600;
+                        vertical-alignment: center;
+                    }
                 }
 
                 TouchArea {

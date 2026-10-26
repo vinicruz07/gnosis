@@ -61,7 +61,6 @@ export component RichViewer inherits Rectangle {
                     text: block.text;
                     color: Theme.text_secondary;
                     font-size: 14px;
-                    line-spacing: 4px;
                     wrap: word-wrap;
                 }
 
@@ -101,11 +100,20 @@ export component RichViewer inherits Rectangle {
                 if (block.kind == "callout"): Rectangle {
                     background: Theme.surface;
                     border-radius: 6px;
-                    border-left-width: 4px;
-                    border-color: Theme.accent;
+                    clip: true;
+
+                    // Barra de destaque vertical à esquerda
+                    Rectangle {
+                        x: 0px;
+                        y: 0px;
+                        width: 4px;
+                        height: 100%;
+                        background: Theme.accent;
+                    }
 
                     VerticalLayout {
                         padding: 10px;
+                        padding-left: 14px;
                         spacing: 6px;
 
                         // Título do Callout com Ícone
@@ -183,11 +191,20 @@ export component RichViewer inherits Rectangle {
                 // Citação (Blockquote)
                 if (block.kind == "quote"): Rectangle {
                     background: Theme.surface;
-                    border-left-width: 3px;
-                    border-color: Theme.text_muted;
+                    clip: true;
+
+                    // Barra vertical da citação à esquerda
+                    Rectangle {
+                        x: 0px;
+                        y: 0px;
+                        width: 3px;
+                        height: 100%;
+                        background: Theme.text_muted;
+                    }
 
                     VerticalLayout {
                         padding: 8px;
+                        padding-left: 12px;
                         Text {
                             text: block.text;
                             color: Theme.text_secondary;
@@ -196,6 +213,12 @@ export component RichViewer inherits Rectangle {
                             wrap: word-wrap;
                         }
                     }
+                }
+
+                // Divisor Horizontal (---)
+                if (block.kind == "divider"): Rectangle {
+                    height: 1px;
+                    background: Theme.border;
                 }
             }
         }

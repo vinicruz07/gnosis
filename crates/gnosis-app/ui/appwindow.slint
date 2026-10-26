@@ -135,8 +135,13 @@ export component AppWindow inherits Window {
             if (root.sidebar_collapsed): Rectangle {
                 width: 28px;
                 background: Theme.sidebar_bg;
-                border-right-width: 1px;
-                border-color: Theme.border;
+
+                Rectangle {
+                    x: parent.width - 1px;
+                    width: 1px;
+                    height: 100%;
+                    background: Theme.border;
+                }
 
                 Text {
                     text: "▶";
@@ -175,8 +180,13 @@ export component AppWindow inherits Window {
                 Rectangle {
                     height: 42px;
                     background: Theme.background;
-                    border-bottom-width: 1px;
-                    border-color: Theme.border;
+
+                    Rectangle {
+                        y: parent.height - 1px;
+                        height: 1px;
+                        width: 100%;
+                        background: Theme.border;
+                    }
 
                     HorizontalLayout {
                         padding-left: 16px;

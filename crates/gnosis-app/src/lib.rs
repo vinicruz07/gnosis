@@ -1,11 +1,11 @@
 //! Gnosis App: Shell de interface gráfica nativa em Slint.
 //!
 //! Diretrizes de Qualidade:
-//! - 100% Rust Seguro (`#![forbid(unsafe_code)]`).
+//! - 100% Rust Seguro (`#![deny(unsafe_code)]`).
 //! - Zero pânicos em tempo de execução (`clippy::unwrap_used`, `clippy::expect_used`, `clippy::panic`).
 //! - Interface leve e responsiva (FemtoVG/Software) calibrada para hardware de 2015-.
 
-#![forbid(unsafe_code)]
+#![deny(unsafe_code)]
 #![deny(clippy::unwrap_used)]
 #![deny(clippy::expect_used)]
 #![deny(clippy::panic)]

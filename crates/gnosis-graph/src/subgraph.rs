@@ -141,7 +141,7 @@ impl SubgraphManager {
             // Filtro: prefixo de caminho / pasta
             if let Some(prefix) = &config.path_prefix {
                 if let Some(path) = &node.path {
-                    if !path.starts_with(prefix) {
+                    if !path.as_str().starts_with(prefix) {
                         continue;
                     }
                 } else if !node.id.starts_with(prefix) {
@@ -248,7 +248,7 @@ impl SubgraphManager {
                 groups.insert(node.id.clone(), gid);
             } else if let Some(path) = &node.path {
                 // Agrupa pela primeira pasta do caminho se houver
-                let folder = path.split('/').next().unwrap_or("");
+                let folder = path.as_str().split('/').next().unwrap_or("");
                 if !folder.is_empty() {
                     let gid = *tag_group_map.entry(folder.to_string()).or_insert_with(|| {
                         let id = next_group_id;

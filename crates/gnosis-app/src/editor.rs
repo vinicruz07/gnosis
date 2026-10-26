@@ -203,6 +203,14 @@ impl EditorController {
                         is_checked: false,
                     });
                 }
+                MarkdownBlock::Divider => {
+                    out.push(RenderBlockModel {
+                        kind: "divider".to_string(),
+                        text: String::new(),
+                        extra: String::new(),
+                        is_checked: false,
+                    });
+                }
             }
         }
     }
