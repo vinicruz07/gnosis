@@ -1,0 +1,352 @@
+import { Theme } from "theme.slint";
+
+export struct StickerItemSlint {
+    id: string,
+    icon: string,
+    name: string,
+    category: string,
+}
+
+export component StickerPickerModal inherits Rectangle {
+    in property <bool> is_open: false;
+    in property <[StickerItemSlint]> items: [];
+    in property <string> active_category: "Todos";
+    in property <string> placeholder_text: "Buscar emoji ou sticker (ex: cérebro, fogo, rust)...";
+
+    callback query_changed(string);
+    callback category_selected(string);
+    callback sticker_selected(string);
+    callback close_requested();
+
+    // Backdrop translúcido
+    background: #000000aa;
+    width: 100%;
+    height: 100%;
+    visible: root.is_open;
+
+    // Área de clique no fundo escuro para fechar
+    TouchArea {
+        clicked => { root.close_requested(); }
+    }
+
+    // Modal Flutuante Centralizado
+    Rectangle {
+        width: 520px;
+        height: 440px;
+        background: Theme.sidebar_bg;
+        border-radius: 10px;
+        border-width: 1px;
+        border-color: Theme.accent;
+        x: (parent.width - self.width) / 2;
+        y: 60px;
+
+        VerticalLayout {
+            padding: 14px;
+            spacing: 10px;
+
+            // Cabeçalho do Modal
+            HorizontalLayout {
+                height: 24px;
+                alignment: space-between;
+
+                HorizontalLayout {
+                    spacing: 6px;
+                    alignment: start;
+
+                    Text {
+                        text: "🎨";
+                        font-size: 14px;
+                        vertical-alignment: center;
+                    }
+
+                    Text {
+                        text: "Escolher Ícone / Sticker da Nota";
+                        color: Theme.text_primary;
+                        font-size: 14px;
+                        font-weight: 700;
+                        vertical-alignment: center;
+                    }
+                }
+
+                // Botão Fechar
+                Rectangle {
+                    width: 22px;
+                    height: 22px;
+                    border-radius: 4px;
+                    background: touch_close.has-hover ? Theme.surface_hover : transparent;
+
+                    Text {
+                        text: "✕";
+                        color: touch_close.has-hover ? Theme.text_primary : Theme.text_muted;
+                        font-size: 11px;
+                        vertical-alignment: center;
+                        horizontal-alignment: center;
+                    }
+
+                    touch_close := TouchArea {
+                        clicked => { root.close_requested(); }
+                    }
+                }
+            }
+
+            // Campo de Busca Difusa
+            Rectangle {
+                height: 38px;
+                background: Theme.background;
+                border-radius: 6px;
+                border-width: 1px;
+                border-color: Theme.border;
+
+                HorizontalLayout {
+                    padding-left: 10px;
+                    padding-right: 10px;
+                    spacing: 8px;
+                    alignment: start;
+
+                    Text {
+                        text: "🔍";
+                        font-size: 13px;
+                        vertical-alignment: center;
+                    }
+
+                    search_input := TextInput {
+                        text: "";
+                        color: Theme.text_primary;
+                        font-size: 13px;
+                        vertical-alignment: center;
+                        horizontal-stretch: 1;
+
+                        edited => {
+                            root.query_changed(self.text);
+                        }
+                    }
+                }
+            }
+
+            // Abas de Categorias Rápidas
+            HorizontalLayout {
+                height: 26px;
+                spacing: 6px;
+                alignment: start;
+
+                // Categoria: Todos
+                Rectangle {
+                    border-radius: 4px;
+                    background: (root.active_category == "Todos") ? Theme.surface_active : (touch_cat_all.has-hover ? Theme.surface_hover : transparent);
+                    border-width: (root.active_category == "Todos") ? 1px : 0px;
+                    border-color: Theme.accent;
+
+                    HorizontalLayout {
+                        padding-left: 8px;
+                        padding-right: 8px;
+                        Text {
+                            text: "Todos";
+                            color: (root.active_category == "Todos") ? Theme.accent : Theme.text_secondary;
+                            font-size: 11px;
+                            font-weight: 600;
+                            vertical-alignment: center;
+                        }
+                    }
+
+                    touch_cat_all := TouchArea {
+                        clicked => { root.category_selected("Todos"); }
+                    }
+                }
+
+                // Categoria: Mente
+                Rectangle {
+                    border-radius: 4px;
+                    background: (root.active_category == "Mente") ? Theme.surface_active : (touch_cat_mente.has-hover ? Theme.surface_hover : transparent);
+                    border-width: (root.active_category == "Mente") ? 1px : 0px;
+                    border-color: Theme.accent;
+
+                    HorizontalLayout {
+                        padding-left: 8px;
+                        padding-right: 8px;
+                        Text {
+                            text: "🧠 Mente";
+                            color: (root.active_category == "Mente") ? Theme.accent : Theme.text_secondary;
+                            font-size: 11px;
+                            font-weight: 600;
+                            vertical-alignment: center;
+                        }
+                    }
+
+                    touch_cat_mente := TouchArea {
+                        clicked => { root.category_selected("Mente"); }
+                    }
+                }
+
+                // Categoria: Projetos
+                Rectangle {
+                    border-radius: 4px;
+                    background: (root.active_category == "Projetos") ? Theme.surface_active : (touch_cat_proj.has-hover ? Theme.surface_hover : transparent);
+                    border-width: (root.active_category == "Projetos") ? 1px : 0px;
+                    border-color: Theme.accent;
+
+                    HorizontalLayout {
+                        padding-left: 8px;
+                        padding-right: 8px;
+                        Text {
+                            text: "🚀 Projetos";
+                            color: (root.active_category == "Projetos") ? Theme.accent : Theme.text_secondary;
+                            font-size: 11px;
+                            font-weight: 600;
+                            vertical-alignment: center;
+                        }
+                    }
+
+                    touch_cat_proj := TouchArea {
+                        clicked => { root.category_selected("Projetos"); }
+                    }
+                }
+
+                // Categoria: Natureza
+                Rectangle {
+                    border-radius: 4px;
+                    background: (root.active_category == "Natureza") ? Theme.surface_active : (touch_cat_nat.has-hover ? Theme.surface_hover : transparent);
+                    border-width: (root.active_category == "Natureza") ? 1px : 0px;
+                    border-color: Theme.accent;
+
+                    HorizontalLayout {
+                        padding-left: 8px;
+                        padding-right: 8px;
+                        Text {
+                            text: "🌿 Natureza";
+                            color: (root.active_category == "Natureza") ? Theme.accent : Theme.text_secondary;
+                            font-size: 11px;
+                            font-weight: 600;
+                            vertical-alignment: center;
+                        }
+                    }
+
+                    touch_cat_nat := TouchArea {
+                        clicked => { root.category_selected("Natureza"); }
+                    }
+                }
+
+                // Categoria: Místico
+                Rectangle {
+                    border-radius: 4px;
+                    background: (root.active_category == "Místico") ? Theme.surface_active : (touch_cat_mist.has-hover ? Theme.surface_hover : transparent);
+                    border-width: (root.active_category == "Místico") ? 1px : 0px;
+                    border-color: Theme.accent;
+
+                    HorizontalLayout {
+                        padding-left: 8px;
+                        padding-right: 8px;
+                        Text {
+                            text: "🔮 Místico";
+                            color: (root.active_category == "Místico") ? Theme.accent : Theme.text_secondary;
+                            font-size: 11px;
+                            font-weight: 600;
+                            vertical-alignment: center;
+                        }
+                    }
+
+                    touch_cat_mist := TouchArea {
+                        clicked => { root.category_selected("Místico"); }
+                    }
+                }
+            }
+
+            // Divisor sutil
+            Rectangle {
+                height: 1px;
+                background: Theme.border;
+            }
+
+            // Catálogo Rolável de Stickers
+            Flickable {
+                vertical-stretch: 1;
+
+                VerticalLayout {
+                    spacing: 4px;
+                    alignment: start;
+
+                    for item in root.items: Rectangle {
+                        height: 38px;
+                        border-radius: 6px;
+                        background: touch_item.has-hover ? Theme.surface_hover : Theme.background;
+                        border-width: touch_item.has-hover ? 1px : 0px;
+                        border-color: Theme.accent;
+
+                        HorizontalLayout {
+                            padding-left: 12px;
+                            padding-right: 12px;
+                            spacing: 12px;
+                            alignment: space-between;
+
+                            HorizontalLayout {
+                                spacing: 10px;
+                                alignment: start;
+
+                                // Emoji / Sticker em destaque
+                                Text {
+                                    text: item.icon;
+                                    font-size: 20px;
+                                    vertical-alignment: center;
+                                }
+
+                                // Nome do sticker
+                                Text {
+                                    text: item.name;
+                                    color: Theme.text_primary;
+                                    font-size: 12px;
+                                    font-weight: 500;
+                                    vertical-alignment: center;
+                                }
+                            }
+
+                            // Selo de Categoria
+                            Rectangle {
+                                height: 18px;
+                                border-radius: 3px;
+                                background: Theme.surface;
+                                y: (parent.height - self.height) / 2;
+
+                                HorizontalLayout {
+                                    padding-left: 6px;
+                                    padding-right: 6px;
+
+                                    Text {
+                                        text: item.category;
+                                        color: Theme.text_muted;
+                                        font-size: 9px;
+                                        vertical-alignment: center;
+                                    }
+                                }
+                            }
+                        }
+
+                        touch_item := TouchArea {
+                            clicked => {
+                                root.sticker_selected(item.icon);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Rodapé Informativo
+            HorizontalLayout {
+                height: 18px;
+                alignment: space-between;
+
+                Text {
+                    text: "Dica: Clique em qualquer ícone para aplicar instantaneamente na nota ativa.";
+                    color: Theme.text_muted;
+                    font-size: 10px;
+                    vertical-alignment: center;
+                }
+
+                Text {
+                    text: "Esc para fechar";
+                    color: Theme.text_muted;
+                    font-size: 10px;
+                    vertical-alignment: center;
+                }
+            }
+        }
+    }
+}

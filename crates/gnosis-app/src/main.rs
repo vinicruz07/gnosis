@@ -12,9 +12,11 @@ use gnosis_app::{
     AppState, AppWindow, ConnectedPeerInfo, EditorController, EditorMode, EditorPane,
     GraphEdgeSlint, GraphEdgeVisual, GraphNodeSlint, GraphNodeVisual, GraphViewController,
     PeerData, QuickItem, QuickItemData, QuickMode, QuickSwitcherManager, RenderBlockData,
-    RenderBlockModel, SplitDirection, SyncDialogController, TabData, TabManager, Theme,
-    ThemeColors, ThemeManager, TreeItemData, TreeItemModel,
+    RenderBlockModel, SplitDirection, StickerItem, StickerItemSlint, StickerPickerController,
+    SyncDialogController, TabData, TabManager, Theme, ThemeColors, ThemeManager, TreeItemData,
+    TreeItemModel,
 };
+
 use gnosis_graph::model::{EdgeType, KnowledgeGraph, NodeType};
 use slint::{ComponentHandle, ModelRc, VecModel};
 use std::sync::{Arc, Mutex};
@@ -122,7 +124,20 @@ fn to_slint_peers(peers: &[ConnectedPeerInfo]) -> Vec<PeerData> {
         .collect()
 }
 
+fn to_slint_stickers(items: &[StickerItem]) -> Vec<StickerItemSlint> {
+    items
+        .iter()
+        .map(|s| StickerItemSlint {
+            id: s.id.as_str().into(),
+            icon: s.icon.as_str().into(),
+            name: s.name.as_str().into(),
+            category: s.category.as_str().into(),
+        })
+        .collect()
+}
+
 fn to_slint_graph_nodes(nodes: &[GraphNodeVisual]) -> Vec<GraphNodeSlint> {
+
     nodes
         .iter()
         .map(|n| GraphNodeSlint {
@@ -266,6 +281,12 @@ fn main() {
     app.set_sync_modal_status("Pronto para conectar.".into());
     app.set_sync_modal_peers(ModelRc::new(VecModel::from(to_slint_peers(&sync_ctrl.peers))));
 
+    let sticker_ctrl = StickerPickerController::new();
+    let initial_stickers = to_slint_stickers(sticker_ctrl.all_items());
+    app.set_sticker_picker_open(false);
+    app.set_sticker_picker_category("Todos".into());
+    app.set_sticker_picker_items(ModelRc::new(VecModel::from(initial_stickers)));
+
     let initial_tree = to_slint_tree(&state.visible_tree_items());
     app.set_file_tree(ModelRc::new(VecModel::from(initial_tree)));
 
@@ -288,7 +309,9 @@ fn main() {
     let graph_arc = Arc::new(Mutex::new(graph_ctrl));
     let theme_arc = Arc::new(Mutex::new(theme_mgr));
     let sync_arc = Arc::new(Mutex::new(sync_ctrl));
+    let sticker_arc = Arc::new(Mutex::new(sticker_ctrl));
     let app_weak = app.as_weak();
+
 
     // Callback: Alternar Tema Místico em Tempo Real (Ctrl+Shift+T ou clique na StatusBar)
     {
@@ -965,7 +988,12 @@ fn main() {
                             if let Some(w) = app_weak.upgrade() {
                                 w.set_sync_modal_open(true);
                             }
+                        } else if action_id == "cmd_pick_sticker" {
+                            if let Some(w) = app_weak.upgrade() {
+                                w.set_sticker_picker_open(true);
+                            }
                         }
+
                     }
                     _ => {}
                 }
@@ -1075,6 +1103,122 @@ fn main() {
             }
         });
     }
+
+    // Callbacks do Seletor Modal de Emojis e Stickers (StickerPicker)
+    // 1. Abrir o Seletor
+    {
+        let app_weak = app_weak.clone();
+        let sticker_arc = Arc::clone(&sticker_arc);
+        app.on_open_sticker_picker(move || {
+            if let Ok(sc) = sticker_arc.lock() {
+                let items = to_slint_stickers(sc.all_items());
+                if let Some(w) = app_weak.upgrade() {
+                    w.set_sticker_picker_open(true);
+                    w.set_sticker_picker_category("Todos".into());
+                    w.set_sticker_picker_items(ModelRc::new(VecModel::from(items)));
+                }
+            }
+        });
+    }
+
+    // 2. Busca Difusa em Tempo Real
+    {
+        let app_weak = app_weak.clone();
+        let sticker_arc = Arc::clone(&sticker_arc);
+        app.on_sticker_query_changed(move |query| {
+            if let Ok(sc) = sticker_arc.lock() {
+                let filtered = sc.search(query.as_str());
+                let items = to_slint_stickers(&filtered);
+                if let Some(w) = app_weak.upgrade() {
+                    w.set_sticker_picker_items(ModelRc::new(VecModel::from(items)));
+                }
+            }
+        });
+    }
+
+    // 3. Filtrar por Categoria
+    {
+        let app_weak = app_weak.clone();
+        let sticker_arc = Arc::clone(&sticker_arc);
+        app.on_sticker_category_selected(move |category| {
+            if let Ok(sc) = sticker_arc.lock() {
+                let filtered = sc.filter_by_category(category.as_str());
+                let items = to_slint_stickers(&filtered);
+                if let Some(w) = app_weak.upgrade() {
+                    w.set_sticker_picker_category(category);
+                    w.set_sticker_picker_items(ModelRc::new(VecModel::from(items)));
+                }
+            }
+        });
+    }
+
+    // 4. Selecionar Sticker / Emoji para a Nota Ativa
+    {
+        let app_weak = app_weak.clone();
+        let state_arc = Arc::clone(&state_arc);
+        let tab_arc = Arc::clone(&tab_arc);
+        let editor_arc = Arc::clone(&editor_arc);
+        app.on_sticker_selected(move |icon| {
+            let icon_str = icon.as_str();
+
+            if let Ok(mut st) = state_arc.lock() {
+                st.active_note_icon = icon_str.to_string();
+                if let Some(ref p) = st.active_note_path.clone() {
+                    st.set_entry_icon(p, Some(icon_str.to_string()));
+                }
+            }
+
+            if let Ok(mut ed) = editor_arc.lock() {
+                let current_content = ed.content();
+                let updated = gnosis_markdown::update_frontmatter_stickers(
+                    &current_content,
+                    Some(icon_str),
+                    None,
+                    None,
+                );
+                ed.set_content(&updated);
+            }
+
+            if let Ok(mut tm) = tab_arc.lock() {
+                if let Some(tab) = tm.active_pane_mut().active_tab_mut() {
+                    tab.icon = Some(icon_str.to_string());
+                }
+            }
+
+            if let Some(w) = app_weak.upgrade() {
+                w.set_active_note_icon(icon.clone());
+                w.set_sticker_picker_open(false);
+
+                if let Ok(tm) = tab_arc.lock() {
+                    let tabs = to_slint_tabs(tm.active_pane());
+                    w.set_tabs(ModelRc::new(VecModel::from(tabs)));
+                }
+
+                if let Ok(st) = state_arc.lock() {
+                    let items = to_slint_tree(&st.visible_tree_items());
+                    w.set_file_tree(ModelRc::new(VecModel::from(items)));
+                }
+
+                if let Ok(ed) = editor_arc.lock() {
+                    let ast = to_slint_ast_blocks(&ed.generate_render_blocks());
+                    w.set_ast_blocks(ModelRc::new(VecModel::from(ast)));
+                }
+            }
+
+            info!("Sticker '{}' aplicado à nota ativa com sucesso.", icon_str);
+        });
+    }
+
+    // 5. Fechar o Seletor
+    {
+        let app_weak = app_weak.clone();
+        app.on_sticker_close_requested(move || {
+            if let Some(w) = app_weak.upgrade() {
+                w.set_sticker_picker_open(false);
+            }
+        });
+    }
+
 
     // Suporte a modo headless para testes e CI
     if std::env::var("GNOSIS_HEADLESS").is_ok() {

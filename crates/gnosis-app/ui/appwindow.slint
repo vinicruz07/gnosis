@@ -7,6 +7,8 @@ import { QuickSwitcherModal, QuickItemData } from "quick_switcher.slint";
 import { RichViewer, RenderBlockData } from "rich_viewer.slint";
 import { GraphCanvas, GraphNodeSlint, GraphEdgeSlint } from "graph_canvas.slint";
 import { SyncModal, PeerData } from "sync_modal.slint";
+import { StickerPickerModal, StickerItemSlint } from "sticker_picker.slint";
+
 
 export component AppWindow inherits Window {
     title: "Gnosis";
@@ -60,6 +62,12 @@ export component AppWindow inherits Window {
     in property <string> sync_modal_status: "Pronto para conectar.";
     in property <[PeerData]> sync_modal_peers: [];
 
+    // Propriedades do Seletor de Emojis e Stickers
+    in property <bool> sticker_picker_open: false;
+    in property <[StickerItemSlint]> sticker_picker_items: [];
+    in property <string> sticker_picker_category: "Todos";
+
+
     // Propriedades da Barra de Status
     in property <string> sync_status: "Sincronizado (Local)";
     in property <color> sync_color: Theme.success;
@@ -112,6 +120,14 @@ export component AppWindow inherits Window {
     callback sync_generate_code();
     callback sync_leave_room();
     callback sync_close_modal();
+
+    // Callbacks do Seletor de Stickers
+    callback open_sticker_picker();
+    callback sticker_query_changed(string);
+    callback sticker_category_selected(string);
+    callback sticker_selected(string);
+    callback sticker_close_requested();
+
 
     // Layout Principal
     VerticalLayout {
@@ -196,15 +212,30 @@ export component AppWindow inherits Window {
                         padding-right: 16px;
                         alignment: space-between;
 
-                        // Título da Nota ou do Grafo com Ícone/Sticker
+                        // Título da Nota ou do Grafo com Ícone/Sticker Interativo
                         HorizontalLayout {
                             spacing: 8px;
                             alignment: start;
 
-                            if (!root.is_graph_view && root.active_note_icon != ""): Text {
-                                text: root.active_note_icon;
-                                font-size: 18px;
-                                vertical-alignment: center;
+                            if (!root.is_graph_view): Rectangle {
+                                width: 28px;
+                                height: 28px;
+                                border-radius: 6px;
+                                background: touch_icon.has-hover ? Theme.surface_hover : transparent;
+                                border-width: touch_icon.has-hover ? 1px : 0px;
+                                border-color: Theme.accent;
+                                y: (parent.height - self.height) / 2;
+
+                                Text {
+                                    text: (root.active_note_icon != "") ? root.active_note_icon : "🎨";
+                                    font-size: (root.active_note_icon != "") ? 18px : 13px;
+                                    vertical-alignment: center;
+                                    horizontal-alignment: center;
+                                }
+
+                                touch_icon := TouchArea {
+                                    clicked => { root.open_sticker_picker(); }
+                                }
                             }
 
                             Text {
@@ -215,6 +246,7 @@ export component AppWindow inherits Window {
                                 vertical-alignment: center;
                             }
                         }
+
 
 
                         // Ações Rápidas: Alternar Grafo, Alternar Edição/Leitura e Quick Switcher
@@ -479,4 +511,17 @@ export component AppWindow inherits Window {
         leave_room_requested => { root.sync_leave_room(); }
         close_modal => { root.sync_close_modal(); }
     }
+
+    // Modal Suspenso Flutuante (Seletor de Emojis e Stickers)
+    StickerPickerModal {
+        is_open: root.sticker_picker_open;
+        items: root.sticker_picker_items;
+        active_category: root.sticker_picker_category;
+
+        query_changed(q) => { root.sticker_query_changed(q); }
+        category_selected(cat) => { root.sticker_category_selected(cat); }
+        sticker_selected(icon) => { root.sticker_selected(icon); }
+        close_requested => { root.sticker_close_requested(); }
+    }
 }
+

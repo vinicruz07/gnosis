@@ -80,9 +80,11 @@ impl QuickSwitcherManager {
             ("cmd_new_note", "Criar Nova Nota", "Adicionar nota vazia no Vault", "Ctrl+N"),
             ("cmd_toggle_theme", "Alternar Tema Visual", "Mudar entre Dark, Light, Dracula e Nord", "Ctrl+Shift+T"),
             ("cmd_sync_now", "Sincronizar Vault Agora", "Conectar aos pares P2P da sala", "Ctrl+S"),
+            ("cmd_pick_sticker", "Escolher Ícone / Sticker da Nota", "Adicionar emoji ou sticker no frontmatter da nota atual", "Ctrl+Shift+E"),
             ("cmd_history_back", "Histórico: Voltar", "Retornar à nota visitada anteriormente", "Alt+Left"),
             ("cmd_history_forward", "Histórico: Avançar", "Avançar na pilha de histórico", "Alt+Right"),
         ];
+
 
         for (id, title, desc, shortcut) in builtins {
             self.all_items.push(QuickItem {
