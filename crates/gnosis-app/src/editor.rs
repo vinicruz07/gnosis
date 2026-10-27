@@ -36,6 +36,7 @@ pub struct RenderBlockModel {
     pub text: String,
     pub extra: String,
     pub is_checked: bool,
+    pub is_editing_math: bool,
 }
 
 /// Controlador do editor de notas, sincronizando o buffer Ropey com a AST e o modo de visualização.
@@ -45,6 +46,7 @@ pub struct EditorController {
     pub buffer: NoteBuffer,
     pub note_path: String,
     pub note_title: String,
+    pub editing_math_index: Option<usize>,
 }
 
 impl Default for EditorController {
@@ -65,7 +67,44 @@ impl EditorController {
             buffer: NoteBuffer::from_str(&content),
             note_path: p,
             note_title: title,
+            editing_math_index: None,
         }
+    }
+
+    /// Inicia o modo interativo estilo Word para edição de fórmula matemática.
+    pub fn start_editing_math(&mut self, block_index: usize) {
+        self.editing_math_index = Some(block_index);
+    }
+
+    /// Cancela a edição interativa de fórmula retornando ao modo gráfico de repouso.
+    pub fn cancel_editing_math(&mut self) {
+        self.editing_math_index = None;
+    }
+
+    /// Aplica a nova fórmula editada no buffer da nota e recompila o bloco.
+    pub fn apply_math_edit(&mut self, block_index: usize, new_formula: &str) {
+        let content = self.content();
+        let blocks = parse_blocks(&content);
+
+        if let Some(MarkdownBlock::MathBlock { formula: old_formula }) = blocks.get(block_index) {
+            let old_pattern = format!("$$\n{}\n$$", old_formula);
+            let new_pattern = format!("$$\n{}\n$$", new_formula.trim());
+
+            let updated_content = if content.contains(&old_pattern) {
+                content.replace(&old_pattern, &new_pattern)
+            } else {
+                let old_inline_pattern = format!("$${}$$", old_formula);
+                if content.contains(&old_inline_pattern) {
+                    content.replace(&old_inline_pattern, &new_pattern)
+                } else {
+                    content
+                }
+            };
+
+            self.set_content(&updated_content);
+        }
+
+        self.editing_math_index = None;
     }
 
     /// Alterna entre modo de Edição e modo de Leitura com preservação integral do conteúdo.
@@ -100,12 +139,18 @@ impl EditorController {
         let blocks = parse_blocks(&text);
         let mut render_blocks = Vec::new();
 
-        Self::flatten_blocks(&blocks, &mut render_blocks);
+        Self::flatten_blocks(&blocks, &mut render_blocks, self.editing_math_index);
         render_blocks
     }
 
-    fn flatten_blocks(blocks: &[MarkdownBlock], out: &mut Vec<RenderBlockModel>) {
-        for block in blocks {
+    fn flatten_blocks(
+        blocks: &[MarkdownBlock],
+        out: &mut Vec<RenderBlockModel>,
+        editing_math_idx: Option<usize>,
+    ) {
+        let mut math_engine = gnosis_markdown::math::MathEngine::new();
+
+        for (idx, block) in blocks.iter().enumerate() {
             match block {
                 MarkdownBlock::Heading { level, text, .. } => {
                     let kind = format!("h{}", level.clamp(&1, &6));
@@ -114,6 +159,7 @@ impl EditorController {
                         text: text.clone(),
                         extra: String::new(),
                         is_checked: false,
+                        is_editing_math: false,
                     });
                 }
                 MarkdownBlock::Paragraph { text, .. } => {
@@ -122,6 +168,7 @@ impl EditorController {
                         text: text.clone(),
                         extra: String::new(),
                         is_checked: false,
+                        is_editing_math: false,
                     });
                 }
                 MarkdownBlock::CodeBlock { language, content } => {
@@ -130,6 +177,7 @@ impl EditorController {
                         text: content.clone(),
                         extra: language.clone().unwrap_or_else(|| "txt".to_string()),
                         is_checked: false,
+                        is_editing_math: false,
                     });
                 }
                 MarkdownBlock::Callout {
@@ -162,6 +210,7 @@ impl EditorController {
                         text: inner_text,
                         extra: format!("{}:{}", kind_str, title),
                         is_checked: false,
+                        is_editing_math: false,
                     });
                 }
                 MarkdownBlock::TaskList { items } => {
@@ -171,6 +220,7 @@ impl EditorController {
                             text: item.text.clone(),
                             extra: String::new(),
                             is_checked: item.checked,
+                            is_editing_math: false,
                         });
                     }
                 }
@@ -180,14 +230,21 @@ impl EditorController {
                         text: lines.join("\n"),
                         extra: String::new(),
                         is_checked: false,
+                        is_editing_math: false,
                     });
                 }
                 MarkdownBlock::MathBlock { formula } => {
+                    let is_editing = editing_math_idx == Some(idx);
+                    // Compila na engine vetorial para aquecer o cache LRU
+                    let _ = math_engine.render_display(formula);
+                    let display_label = format_math_label(formula);
+
                     out.push(RenderBlockModel {
                         kind: "math".to_string(),
                         text: formula.clone(),
-                        extra: String::new(),
+                        extra: display_label,
                         is_checked: false,
+                        is_editing_math: is_editing,
                     });
                 }
                 MarkdownBlock::Table { headers, rows } => {
@@ -201,6 +258,7 @@ impl EditorController {
                         text: table_text,
                         extra: String::new(),
                         is_checked: false,
+                        is_editing_math: false,
                     });
                 }
                 MarkdownBlock::Divider => {
@@ -209,11 +267,38 @@ impl EditorController {
                         text: String::new(),
                         extra: String::new(),
                         is_checked: false,
+                        is_editing_math: false,
                     });
                 }
             }
         }
     }
+}
+
+/// Formata a expressão matemática para exibição tipográfica no modo gráfico de repouso.
+fn format_math_label(formula: &str) -> String {
+    let mut s = formula.trim().to_string();
+    let glyphs = [
+        (r"\sum", "∑"), (r"\prod", "∏"), (r"\int", "∫"), (r"\iint", "∬"), (r"\oint", "∮"),
+        (r"\alpha", "α"), (r"\beta", "β"), (r"\gamma", "γ"), (r"\delta", "δ"),
+        (r"\pi", "π"), (r"\sigma", "σ"), (r"\theta", "θ"), (r"\lambda", "λ"),
+        (r"\infty", "∞"), (r"\pm", "±"), (r"\sqrt", "√"),
+        (r"\leq", "≤"), (r"\geq", "≥"), (r"\neq", "≠"), (r"\approx", "≈"),
+        (r"\rightarrow", "→"), (r"\partial", "∂"), (r"\nabla", "∇"),
+        (r"\begin{pmatrix}", "("), (r"\end{pmatrix}", ")"),
+        (r"\begin{bmatrix}", "["), (r"\end{bmatrix}", "]"),
+        (r"\\", " "), (r"&", " "),
+    ];
+
+    for (pattern, rep) in glyphs {
+        s = s.replace(pattern, rep);
+    }
+
+    if s.contains(r"\frac") {
+        s = s.replace(r"\frac{", "(").replace("}{", " / ").replace('}', ")");
+    }
+
+    s
 }
 
 #[cfg(test)]
@@ -270,5 +355,29 @@ fn main() { println!("Gnosis"); }
         assert!(blocks.iter().any(|b| b.kind == "task" && b.is_checked));
         assert!(blocks.iter().any(|b| b.kind == "task" && !b.is_checked));
         assert!(blocks.iter().any(|b| b.kind == "quote"));
+    }
+
+    #[test]
+    fn test_interactive_math_editing_mode_word_style() {
+        let markdown = "# Fórmula\n\n$$\nx^2 + y^2 = z^2\n$$\n";
+        let mut controller = EditorController::new("Math.md", markdown);
+
+        let blocks = controller.generate_render_blocks();
+        assert_eq!(blocks.len(), 2);
+        assert_eq!(blocks[1].kind, "math");
+        assert_eq!(blocks[1].is_editing_math, false);
+        assert!(blocks[1].extra.contains("x^2"));
+
+        // Ativa modo interativo estilo Word no bloco 1
+        controller.start_editing_math(1);
+        let blocks_editing = controller.generate_render_blocks();
+        assert_eq!(blocks_editing[1].is_editing_math, true);
+
+        // Aplica nova fórmula editada
+        controller.apply_math_edit(1, "E = mc^2");
+        let blocks_after = controller.generate_render_blocks();
+        assert_eq!(blocks_after[1].is_editing_math, false);
+        assert_eq!(blocks_after[1].text, "E = mc^2");
+        assert!(controller.content().contains("E = mc^2"));
     }
 }

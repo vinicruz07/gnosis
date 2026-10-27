@@ -95,6 +95,9 @@ export component AppWindow inherits Window {
     callback toggle_editor_mode();
     callback note_text_edited(string);
     callback task_checkbox_toggled(int);
+    callback math_clicked(int);
+    callback math_applied(int, string);
+    callback math_cancelled(int);
 
     // Callbacks do Grafo 2D
     callback toggle_graph_view();
@@ -499,6 +502,9 @@ export component AppWindow inherits Window {
                                 vertical-stretch: 1;
                                 blocks: root.ast_blocks;
                                 task_toggled(idx) => { root.task_checkbox_toggled(idx); }
+                                math_clicked(idx) => { root.math_clicked(idx); }
+                                math_applied(idx, formula) => { root.math_applied(idx, formula); }
+                                math_cancelled(idx) => { root.math_cancelled(idx); }
                             }
                         }
                     }

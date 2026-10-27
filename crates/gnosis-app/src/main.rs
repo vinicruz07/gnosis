@@ -108,6 +108,7 @@ fn to_slint_ast_blocks(blocks: &[RenderBlockModel]) -> Vec<RenderBlockData> {
             text: b.text.as_str().into(),
             extra: b.extra.as_str().into(),
             is_checked: b.is_checked,
+            is_editing_math: b.is_editing_math,
         })
         .collect()
 }
@@ -883,6 +884,60 @@ fn main() {
         let editor_arc = Arc::clone(&editor_arc);
         app.on_task_checkbox_toggled(move |_idx| {
             if let Ok(ed) = editor_arc.lock() {
+                let ast = to_slint_ast_blocks(&ed.generate_render_blocks());
+                if let Some(w) = app_weak.upgrade() {
+                    w.set_ast_blocks(ModelRc::new(VecModel::from(ast)));
+                }
+            }
+        });
+    }
+
+    // Callback: Clique em bloco de equação matemática (Ativa modo interativo estilo Word)
+    {
+        let app_weak = app_weak.clone();
+        let editor_arc = Arc::clone(&editor_arc);
+        app.on_math_clicked(move |idx| {
+            if let Ok(mut ed) = editor_arc.lock() {
+                ed.start_editing_math(idx as usize);
+                let ast = to_slint_ast_blocks(&ed.generate_render_blocks());
+                if let Some(w) = app_weak.upgrade() {
+                    w.set_ast_blocks(ModelRc::new(VecModel::from(ast)));
+                }
+            }
+        });
+    }
+
+    // Callback: Aplicação de nova fórmula matemática editada (Shift+Enter ou clique em ✓)
+    {
+        let app_weak = app_weak.clone();
+        let editor_arc = Arc::clone(&editor_arc);
+        let state_arc = Arc::clone(&state_arc);
+
+        app.on_math_applied(move |idx, new_formula| {
+            if let Ok(mut ed) = editor_arc.lock() {
+                ed.apply_math_edit(idx as usize, new_formula.as_str());
+                let updated_content = ed.content();
+
+                if let Ok(mut st) = state_arc.lock() {
+                    st.active_note_content = updated_content.clone();
+                }
+
+                let ast = to_slint_ast_blocks(&ed.generate_render_blocks());
+                if let Some(w) = app_weak.upgrade() {
+                    w.set_active_note_content(updated_content.as_str().into());
+                    w.set_ast_blocks(ModelRc::new(VecModel::from(ast)));
+                }
+            }
+        });
+    }
+
+    // Callback: Cancelar edição de equação matemática
+    {
+        let app_weak = app_weak.clone();
+        let editor_arc = Arc::clone(&editor_arc);
+        app.on_math_cancelled(move |_idx| {
+            if let Ok(mut ed) = editor_arc.lock() {
+                ed.cancel_editing_math();
                 let ast = to_slint_ast_blocks(&ed.generate_render_blocks());
                 if let Some(w) = app_weak.upgrade() {
                     w.set_ast_blocks(ModelRc::new(VecModel::from(ast)));

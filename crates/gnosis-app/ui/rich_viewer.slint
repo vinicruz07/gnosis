@@ -5,11 +5,15 @@ export struct RenderBlockData {
     text: string,
     extra: string,
     is_checked: bool,
+    is_editing_math: bool,
 }
 
 export component RichViewer inherits Rectangle {
     in property <[RenderBlockData]> blocks: [];
     callback task_toggled(int);
+    callback math_clicked(int);
+    callback math_applied(int, string);
+    callback math_cancelled(int);
 
     background: Theme.background;
 
@@ -212,6 +216,144 @@ export component RichViewer inherits Rectangle {
                             font-italic: true;
                             wrap: word-wrap;
                         }
+                    }
+                }
+
+                // Bloco Matemático Interativo estilo Word ($$ ... $$)
+                if (block.kind == "math"): Rectangle {
+                    background: block.is_editing_math ? #11111b : Theme.surface;
+                    border-radius: 6px;
+                    border-width: block.is_editing_math ? 1.5px : 1px;
+                    border-color: block.is_editing_math ? Theme.accent : Theme.border;
+
+                    VerticalLayout {
+                        padding: 12px;
+                        spacing: 8px;
+
+                        // Cabeçalho de Controle e Status da Fórmula
+                        HorizontalLayout {
+                            alignment: space-between;
+
+                            HorizontalLayout {
+                                spacing: 6px;
+                                alignment: start;
+
+                                Text {
+                                    text: "📐";
+                                    font-size: 13px;
+                                    vertical-alignment: center;
+                                }
+
+                                Text {
+                                    text: block.is_editing_math ? "Editor de Equação (LaTeX / Typst)" : "Equação";
+                                    color: block.is_editing_math ? Theme.accent : Theme.text_muted;
+                                    font-size: 11px;
+                                    font-weight: 600;
+                                    vertical-alignment: center;
+                                }
+                            }
+
+                            if (!block.is_editing_math): Text {
+                                text: "Clique para editar";
+                                color: Theme.text_muted;
+                                font-size: 10px;
+                                vertical-alignment: center;
+                            }
+
+                            if (block.is_editing_math): HorizontalLayout {
+                                spacing: 6px;
+                                alignment: end;
+
+                                // Botão Cancelar
+                                Rectangle {
+                                    width: 22px;
+                                    height: 22px;
+                                    border-radius: 4px;
+                                    background: touch_mcanc.has-hover ? Theme.surface_hover : transparent;
+
+                                    Text {
+                                        text: "✕";
+                                        color: Theme.text_muted;
+                                        font-size: 10px;
+                                        vertical-alignment: center;
+                                        horizontal-alignment: center;
+                                    }
+
+                                    touch_mcanc := TouchArea {
+                                        clicked => { root.math_cancelled(idx); }
+                                    }
+                                }
+
+                                // Botão Aplicar (✓)
+                                Rectangle {
+                                    height: 22px;
+                                    border-radius: 4px;
+                                    background: Theme.accent;
+
+                                    HorizontalLayout {
+                                        padding-left: 8px;
+                                        padding-right: 8px;
+                                        alignment: center;
+
+                                        Text {
+                                            text: "✓ Aplicar";
+                                            color: #11111b;
+                                            font-size: 11px;
+                                            font-weight: 700;
+                                            vertical-alignment: center;
+                                        }
+                                    }
+
+                                    TouchArea {
+                                        clicked => { root.math_applied(idx, math_input.text); }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Modo 1: Repouso Gráfico estilo Word (Nítido, elegante, renderizado)
+                        if (!block.is_editing_math): HorizontalLayout {
+                            alignment: center;
+                            padding-top: 6px;
+                            padding-bottom: 6px;
+
+                            Text {
+                                text: (block.extra != "") ? block.extra : block.text;
+                                color: Theme.text_primary;
+                                font-size: 18px;
+                                font-italic: true;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                        }
+
+                        // Modo 2: Edição Interativa estilo Word (TextInput com foco ao vivo)
+                        if (block.is_editing_math): VerticalLayout {
+                            spacing: 4px;
+
+                            math_input := TextInput {
+                                text: block.text;
+                                color: #89dceb;
+                                font-size: 14px;
+                                single-line: false;
+                                wrap: word-wrap;
+
+                                accepted => {
+                                    root.math_applied(idx, self.text);
+                                }
+                            }
+
+                            Text {
+                                text: "Dica: Pressione Enter no teclado para aplicar ou clique em ✓";
+                                color: Theme.text_muted;
+                                font-size: 10px;
+                            }
+                        }
+                    }
+
+                    // Se não estiver editando, TouchArea cobre todo o bloco para abrir no clique
+                    if (!block.is_editing_math): TouchArea {
+                        clicked => { root.math_clicked(idx); }
                     }
                 }
 
