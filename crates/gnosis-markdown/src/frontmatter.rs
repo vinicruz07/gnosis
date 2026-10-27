@@ -162,7 +162,11 @@ pub fn update_frontmatter_stickers(
         }
         if let Some(co) = color {
             if !co.is_empty() {
-                yaml_block.push_str(&format!("color: {}\n", co));
+                if co.starts_with('#') {
+                    yaml_block.push_str(&format!("color: \"{}\"\n", co));
+                } else {
+                    yaml_block.push_str(&format!("color: {}\n", co));
+                }
             }
         }
 
@@ -251,7 +255,11 @@ pub fn update_frontmatter_stickers(
             found_color = true;
             if let Some(co) = color {
                 if !co.is_empty() {
-                    new_lines.push(format!("color: {}", co));
+                    if co.starts_with('#') {
+                        new_lines.push(format!("color: \"{}\"", co));
+                    } else {
+                        new_lines.push(format!("color: {}", co));
+                    }
                 }
             }
         } else {
@@ -276,7 +284,11 @@ pub fn update_frontmatter_stickers(
     if !found_color {
         if let Some(co) = color {
             if !co.is_empty() {
-                new_lines.push(format!("color: {}", co));
+                if co.starts_with('#') {
+                    new_lines.push(format!("color: \"{}\"", co));
+                } else {
+                    new_lines.push(format!("color: {}", co));
+                }
             }
         }
     }

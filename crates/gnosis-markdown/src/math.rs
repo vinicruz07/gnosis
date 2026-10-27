@@ -604,13 +604,14 @@ fn wrap_svg(width: f32, height: f32, content: &str, style: &MathStyle) -> String
   <style>
     .math-text, .math-num, .math-den, .math-radicand, .math-cell {{
       font-family: "KaTeX_Math", "Latin Modern Math", "Cambria Math", "DejaVu Serif", serif;
+      fill: {};
       user-select: none;
     }}
   </style>
   <rect width="100%" height="100%" fill="none"/>
   {}
 </svg>"#,
-        width, height, width, height, content
+        width, height, width, height, style.color_hex, content
     )
 }
 
