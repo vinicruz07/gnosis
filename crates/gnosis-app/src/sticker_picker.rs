@@ -51,7 +51,7 @@ impl StickerPickerController {
         let mut catalog = Vec::new();
 
         // Categoria: Conhecimento & Mente
-        catalog.push(StickerItem::new("brain", "🧠", "Cérebro / Mente", "Mente", "brain mind neuro psicologia inteligencia memoria"));
+        catalog.push(StickerItem::new("brain", "🧠", "Cérebro / Mente", "Mente", "brain cerebro mind neuro psicologia inteligencia memoria"));
         catalog.push(StickerItem::new("lightbulb", "💡", "Ideia / Insight", "Mente", "lightbulb idea insight pensamento criatividade luz"));
         catalog.push(StickerItem::new("open_book", "📖", "Livro Aberto", "Mente", "book read leitura estudo aprendizado"));
         catalog.push(StickerItem::new("books", "📚", "Biblioteca", "Mente", "books biblioteca curso referencia literatura"));

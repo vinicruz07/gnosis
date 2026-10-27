@@ -318,6 +318,8 @@ mod tests {
         assert_eq!(state.active_note_icon, "🦀");
         assert_eq!(state.active_note_title, "Rust");
 
+        // Expande a pasta para que o item fique visível na árvore
+        state.toggle_folder("Notas");
         let visible = state.visible_tree_items();
         let rust_item = visible.iter().find(|i| i.path == "Notas/Rust.md" || i.name == "Rust");
         assert!(rust_item.is_some());

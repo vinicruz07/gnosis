@@ -57,7 +57,7 @@ export component CanvasView inherits Rectangle {
 
         moved => {
             // Arraste de pan na tela quando não interceptado por um nó
-            root.canvas_panned(self.mouse-x - self.pressed-x, self.mouse-y - self.pressed-y);
+            root.canvas_panned((self.mouse-x - self.pressed-x) / 1px, (self.mouse-y - self.pressed-y) / 1px);
         }
 
         clicked => {
@@ -105,7 +105,7 @@ export component CanvasView inherits Rectangle {
             TouchArea {
                 clicked => { root.node_clicked(node.id); }
                 moved => {
-                    root.node_dragged(node.id, self.mouse-x - self.pressed-x, self.mouse-y - self.pressed-y);
+                    root.node_dragged(node.id, (self.mouse-x - self.pressed-x) / 1px, (self.mouse-y - self.pressed-y) / 1px);
                 }
             }
         }
@@ -124,8 +124,8 @@ export component CanvasView inherits Rectangle {
     // Rótulos nas Arestas (se houver)
     for edge in root.edges: Rectangle {
         if (edge.label != ""): Rectangle {
-            x: ((edge.from_x + edge.to_x) / 2 - self.width / 2) * 1px;
-            y: ((edge.from_y + edge.to_y) / 2 - self.height / 2) * 1px;
+            x: ((edge.from_x + edge.to_x) / 2) * 1px - self.width / 2;
+            y: ((edge.from_y + edge.to_y) / 2) * 1px - self.height / 2;
             height: 20px;
             background: Theme.sidebar_bg;
             border-radius: 4px;
@@ -249,7 +249,7 @@ export component CanvasView inherits Rectangle {
                 }
 
                 moved => {
-                    root.node_dragged(node.id, self.mouse-x - self.pressed-x, self.mouse-y - self.pressed-y);
+                    root.node_dragged(node.id, (self.mouse-x - self.pressed-x) / 1px, (self.mouse-y - self.pressed-y) / 1px);
                 }
             }
         }
@@ -458,7 +458,7 @@ export component CanvasView inherits Rectangle {
                 width: 24px;
                 height: 24px;
                 border-radius: 4px;
-                background: touch_del.has-hover ? Theme.error : transparent;
+                background: touch_del.has-hover ? Theme.danger : transparent;
 
                 Text {
                     text: "🗑️";

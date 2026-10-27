@@ -235,7 +235,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     state.set_entry_icon("01_Projetos/Rust/Slint Shell.md", Some("🎨".to_string()));
 
     // Conteúdo demonstrativo rico com múltiplos blocos AST
-    let sample_markdown = r#"---
+    let sample_markdown = r##"---
 title: Gnosis Core
 icon: 🧠
 color: "#ffaa00"
@@ -255,7 +255,7 @@ fn main() {
 
 > [!NOTE] Design Tokens Dinâmicos
 > Pressione `Ctrl+Shift+T` ou clique no selo de tema na barra de status para alternar.
-"#;
+"##;
 
     // Inicializa gerenciador de abas com ícone
     let mut tab_mgr = TabManager::new();

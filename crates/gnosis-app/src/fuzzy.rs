@@ -9,6 +9,21 @@ pub struct FuzzyMatch {
     pub matched_indices: Vec<usize>,
 }
 
+/// Normaliza caracteres com acentos comuns para a letra base correspondente.
+#[inline]
+fn normalize_char(c: char) -> char {
+    match c {
+        'á' | 'à' | 'â' | 'ã' | 'ä' | 'Á' | 'À' | 'Â' | 'Ã' | 'Ä' => 'a',
+        'é' | 'è' | 'ê' | 'ë' | 'É' | 'È' | 'Ê' | 'Ë' => 'e',
+        'í' | 'ì' | 'î' | 'ï' | 'Í' | 'Ì' | 'Î' | 'Ï' => 'i',
+        'ó' | 'ò' | 'ô' | 'õ' | 'ö' | 'Ó' | 'Ò' | 'Ô' | 'Õ' | 'Ö' => 'o',
+        'ú' | 'ù' | 'û' | 'ü' | 'Ú' | 'Ù' | 'Û' | 'Ü' => 'u',
+        'ç' | 'Ç' => 'c',
+        'ñ' | 'Ñ' => 'n',
+        other => other.to_ascii_lowercase(),
+    }
+}
+
 /// Algoritmo de correspondência difusa ponderada (Fuzzy Search).
 ///
 /// Retorna `Some(FuzzyMatch)` com o score e índices se a query for uma subsequência
@@ -21,8 +36,8 @@ pub fn fuzzy_match(query: &str, target: &str) -> Option<FuzzyMatch> {
         });
     }
 
-    let query_chars: Vec<char> = query.to_lowercase().chars().collect();
-    let target_chars: Vec<char> = target.to_lowercase().chars().collect();
+    let query_chars: Vec<char> = query.chars().map(normalize_char).collect();
+    let target_chars: Vec<char> = target.chars().map(normalize_char).collect();
 
     if query_chars.len() > target_chars.len() {
         return None;

@@ -272,7 +272,7 @@ mod tests {
             Err(_) => return,
         };
 
-        let raw = r#"---
+        let raw = r##"---
 title: Gnosis Docs
 icon: 🧠
 sticker: custom.svg
@@ -280,7 +280,7 @@ color: "#ff5555"
 ---
 # Documentação
 Texto da nota aqui.
-"#;
+"##;
 
         let mut note = VaultNote::from_raw_markdown(path, raw);
         assert_eq!(note.title(), "Gnosis Docs");

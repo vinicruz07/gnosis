@@ -12,7 +12,7 @@
 
 use std::collections::HashMap;
 use gnosis_core::canvas::{
-    CanvasData, CanvasEdge, CanvasNode, EdgeEnd, FileNode, GroupNode, LinkNode, NodeSide, TextNode,
+    CanvasData, CanvasEdge, CanvasNode, EdgeEnd, FileNode, GroupNode, NodeSide, TextNode,
 };
 use serde::{Deserialize, Serialize};
 
@@ -400,7 +400,7 @@ mod tests {
 
     #[test]
     fn test_visual_model_projection() {
-        let mut ctrl = CanvasViewController::with_default_demo();
+        let ctrl = CanvasViewController::with_default_demo();
         let (nodes, edges) = ctrl.to_visual_models();
 
         assert_eq!(nodes.len(), 3);
