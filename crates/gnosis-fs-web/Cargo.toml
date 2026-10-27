@@ -12,3 +12,9 @@ workspace = true
 gnosis-core = { path = "../gnosis-core" }
 thiserror = { workspace = true }
 serde = { workspace = true }
+serde_json = { workspace = true }
+async-trait = { workspace = true }
+tokio = { workspace = true, features = ["sync"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
