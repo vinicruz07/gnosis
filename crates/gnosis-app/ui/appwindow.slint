@@ -6,6 +6,7 @@ import { TabBar, TabData } from "tabbar.slint";
 import { QuickSwitcherModal, QuickItemData } from "quick_switcher.slint";
 import { RichViewer, RenderBlockData } from "rich_viewer.slint";
 import { GraphCanvas, GraphNodeSlint, GraphEdgeSlint } from "graph_canvas.slint";
+import { CanvasView, CanvasNodeSlint, CanvasEdgeSlint } from "canvas_view.slint";
 import { SyncModal, PeerData } from "sync_modal.slint";
 import { StickerPickerModal, StickerItemSlint } from "sticker_picker.slint";
 
@@ -38,6 +39,15 @@ export component AppWindow inherits Window {
     in property <bool> graph_is_sleeping: false;
     in property <bool> graph_hide_orphans: false;
     in property <bool> graph_hide_unresolved: false;
+
+    // Propriedades do Canvas 2D Infinito (.canvas)
+    in property <bool> is_canvas_view: false;
+    in property <[CanvasNodeSlint]> canvas_nodes: [];
+    in property <[CanvasEdgeSlint]> canvas_edges: [];
+    in property <float> canvas_zoom_level: 1.0;
+    in property <string> canvas_selected_node_id: "";
+    in property <int> canvas_node_count: 0;
+    in property <int> canvas_edge_count: 0;
 
     // Propriedades do Painel Secundário (Split View)
     in property <bool> is_split: false;
@@ -96,6 +106,20 @@ export component AppWindow inherits Window {
     callback graph_toggle_hide_unresolved();
     callback graph_zoom_in();
     callback graph_zoom_out();
+
+    // Callbacks do Canvas 2D Infinito
+    callback toggle_canvas_view();
+    callback canvas_node_clicked(string);
+    callback canvas_node_dragged(string, float, float);
+    callback canvas_node_double_clicked(string);
+    callback canvas_panned(float, float);
+    callback canvas_zoom_in();
+    callback canvas_zoom_out();
+    callback canvas_zoom_reset();
+    callback canvas_fit_all();
+    callback canvas_add_text_requested();
+    callback canvas_add_note_requested();
+    callback canvas_delete_selected_requested();
 
     // Callbacks de Abas, Split e Histórico
     callback tab_selected(int);
@@ -217,7 +241,7 @@ export component AppWindow inherits Window {
                             spacing: 8px;
                             alignment: start;
 
-                            if (!root.is_graph_view): Rectangle {
+                            if (!root.is_graph_view && !root.is_canvas_view): Rectangle {
                                 width: 28px;
                                 height: 28px;
                                 border-radius: 6px;
@@ -239,7 +263,8 @@ export component AppWindow inherits Window {
                             }
 
                             Text {
-                                text: root.is_graph_view ? "🕸️ Grafo de Conhecimento Global" : root.active_note_title;
+                                text: root.is_graph_view ? "🕸️ Grafo de Conhecimento Global" :
+                                      root.is_canvas_view ? "🖼️ Tela Visual Infinita (.canvas)" : root.active_note_title;
                                 color: Theme.text_primary;
                                 font-size: 16px;
                                 font-weight: 700;
@@ -249,7 +274,7 @@ export component AppWindow inherits Window {
 
 
 
-                        // Ações Rápidas: Alternar Grafo, Alternar Edição/Leitura e Quick Switcher
+                        // Ações Rápidas: Alternar Grafo, Canvas, Alternar Edição/Leitura e Quick Switcher
                         HorizontalLayout {
                             spacing: 8px;
                             alignment: end;
@@ -289,8 +314,43 @@ export component AppWindow inherits Window {
                                 }
                             }
 
-                            // Botão Alternar Edição / Leitura (apenas se não estiver no Grafo)
-                            if (!root.is_graph_view): Rectangle {
+                            // Botão Alternar Visualização do Canvas 2D
+                            Rectangle {
+                                width: 110px;
+                                height: 28px;
+                                border-radius: 4px;
+                                background: root.is_canvas_view ? Theme.surface_active : Theme.surface;
+                                border-width: 1px;
+                                border-color: root.is_canvas_view ? Theme.accent : Theme.border;
+                                y: (parent.height - self.height) / 2;
+
+                                HorizontalLayout {
+                                    alignment: center;
+                                    spacing: 6px;
+
+                                    Text {
+                                        text: root.is_canvas_view ? "📝 Notas" : "🖼️ Canvas";
+                                        color: root.is_canvas_view ? Theme.accent : Theme.text_primary;
+                                        font-size: 11px;
+                                        font-weight: 600;
+                                        vertical-alignment: center;
+                                    }
+
+                                    Text {
+                                        text: "(Ctrl+K)";
+                                        color: Theme.text_muted;
+                                        font-size: 10px;
+                                        vertical-alignment: center;
+                                    }
+                                }
+
+                                TouchArea {
+                                    clicked => { root.toggle_canvas_view(); }
+                                }
+                            }
+
+                            // Botão Alternar Edição / Leitura (apenas se não estiver no Grafo nem no Canvas)
+                            if (!root.is_graph_view && !root.is_canvas_view): Rectangle {
                                 width: 120px;
                                 height: 28px;
                                 border-radius: 4px;
@@ -356,7 +416,7 @@ export component AppWindow inherits Window {
                     }
                 }
 
-                // Corpo Central: Canvas do Grafo 2D OU Editores de Nota
+                // Corpo Central: Canvas do Grafo 2D OU Canvas 2D Infinito (.canvas) OU Editores de Nota
                 if (root.is_graph_view): GraphCanvas {
                     vertical-stretch: 1;
                     nodes: root.graph_nodes;
@@ -375,7 +435,29 @@ export component AppWindow inherits Window {
                     zoom_out => { root.graph_zoom_out(); }
                 }
 
-                if (!root.is_graph_view): HorizontalLayout {
+                if (root.is_canvas_view): CanvasView {
+                    vertical-stretch: 1;
+                    nodes: root.canvas_nodes;
+                    edges: root.canvas_edges;
+                    zoom_level: root.canvas_zoom_level;
+                    selected_node_id: root.canvas_selected_node_id;
+                    node_count: root.canvas_node_count;
+                    edge_count: root.canvas_edge_count;
+
+                    node_clicked(id) => { root.canvas_node_clicked(id); }
+                    node_dragged(id, dx, dy) => { root.canvas_node_dragged(id, dx, dy); }
+                    node_double_clicked(id) => { root.canvas_node_double_clicked(id); }
+                    canvas_panned(dx, dy) => { root.canvas_panned(dx, dy); }
+                    zoom_in => { root.canvas_zoom_in(); }
+                    zoom_out => { root.canvas_zoom_out(); }
+                    zoom_reset => { root.canvas_zoom_reset(); }
+                    fit_all => { root.canvas_fit_all(); }
+                    add_text_requested => { root.canvas_add_text_requested(); }
+                    add_note_requested => { root.canvas_add_note_requested(); }
+                    delete_selected_requested => { root.canvas_delete_selected_requested(); }
+                }
+
+                if (!root.is_graph_view && !root.is_canvas_view): HorizontalLayout {
                     vertical-stretch: 1;
                     spacing: 0px;
 

@@ -10,6 +10,7 @@
 #![deny(clippy::expect_used)]
 #![deny(clippy::panic)]
 
+pub mod canvas_view;
 pub mod editor;
 pub mod fuzzy;
 pub mod graph_view;
@@ -20,6 +21,7 @@ pub mod sync_dialog;
 pub mod tabs;
 pub mod theme;
 
+pub use canvas_view::{CanvasEdgeVisual, CanvasNodeVisual, CanvasViewController};
 pub use editor::{EditorController, EditorMode, RenderBlockModel};
 pub use fuzzy::{fuzzy_match, FuzzyMatch};
 pub use graph_view::{GraphEdgeVisual, GraphNodeVisual, GraphViewController, PhysicsStatus};

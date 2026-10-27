@@ -75,6 +75,7 @@ impl QuickSwitcherManager {
     pub fn register_builtin_commands(&mut self) {
         let builtins = [
             ("cmd_graph", "Abrir Grafo de Conhecimento", "Visualizar trama de notas 2D e física", "Ctrl+G"),
+            ("cmd_canvas", "Abrir Tela Visual Infinita (Canvas 2D)", "Organizar notas e cartões no plano espacial (.canvas)", "Ctrl+K"),
             ("cmd_toggle_sidebar", "Alternar Barra Lateral", "Mostrar ou recolher árvore de arquivos", "Ctrl+B"),
             ("cmd_toggle_split", "Alternar Divisão de Tela", "Ativar visualização lado a lado", "Ctrl+\\"),
             ("cmd_new_note", "Criar Nova Nota", "Adicionar nota vazia no Vault", "Ctrl+N"),

@@ -9,7 +9,8 @@
 #![deny(clippy::panic)]
 
 use gnosis_app::{
-    AppState, AppWindow, ConnectedPeerInfo, EditorController, EditorMode, EditorPane,
+    AppState, AppWindow, CanvasEdgeSlint, CanvasEdgeVisual, CanvasNodeSlint, CanvasNodeVisual,
+    CanvasViewController, ConnectedPeerInfo, EditorController, EditorMode, EditorPane,
     GraphEdgeSlint, GraphEdgeVisual, GraphNodeSlint, GraphNodeVisual, GraphViewController,
     PeerData, QuickItem, QuickItemData, QuickMode, QuickSwitcherManager, RenderBlockData,
     RenderBlockModel, SplitDirection, StickerItem, StickerItemSlint, StickerPickerController,
@@ -165,6 +166,43 @@ fn to_slint_graph_edges(edges: &[GraphEdgeVisual]) -> Vec<GraphEdgeSlint> {
         .collect()
 }
 
+fn to_slint_canvas_nodes(nodes: &[CanvasNodeVisual]) -> Vec<CanvasNodeSlint> {
+    nodes
+        .iter()
+        .map(|n| CanvasNodeSlint {
+            id: n.id.as_str().into(),
+            node_type: n.node_type.as_str().into(),
+            screen_x: n.screen_x,
+            screen_y: n.screen_y,
+            screen_width: n.screen_width,
+            screen_height: n.screen_height,
+            color_hex: n.color_hex.as_str().into(),
+            title: n.title.as_str().into(),
+            content: n.content.as_str().into(),
+            subpath: n.subpath.as_str().into(),
+            is_selected: n.is_selected,
+        })
+        .collect()
+}
+
+fn to_slint_canvas_edges(edges: &[CanvasEdgeVisual]) -> Vec<CanvasEdgeSlint> {
+    edges
+        .iter()
+        .map(|e| CanvasEdgeSlint {
+            id: e.id.as_str().into(),
+            from_node: e.from_node.as_str().into(),
+            from_x: e.from_x,
+            from_y: e.from_y,
+            to_node: e.to_node.as_str().into(),
+            to_x: e.to_x,
+            to_y: e.to_y,
+            color_hex: e.color_hex.as_str().into(),
+            label: e.label.as_str().into(),
+            has_arrow: e.has_arrow,
+        })
+        .collect()
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();
     info!("Inicializando Gnosis - Temas Místicos via TOML (Abyss, Aether, Arcana, Boreas)");
@@ -302,11 +340,21 @@ fn main() {
     app.set_graph_edges(ModelRc::new(VecModel::from(initial_edges)));
     app.set_graph_is_sleeping(graph_ctrl.is_sleeping());
 
+    let canvas_ctrl = CanvasViewController::with_default_demo();
+    let (initial_c_nodes, initial_c_edges) = canvas_ctrl.to_visual_models();
+    app.set_is_canvas_view(false);
+    app.set_canvas_zoom_level(canvas_ctrl.zoom);
+    app.set_canvas_node_count(canvas_ctrl.canvas_data.node_count() as i32);
+    app.set_canvas_edge_count(canvas_ctrl.canvas_data.edge_count() as i32);
+    app.set_canvas_nodes(ModelRc::new(VecModel::from(to_slint_canvas_nodes(&initial_c_nodes))));
+    app.set_canvas_edges(ModelRc::new(VecModel::from(to_slint_canvas_edges(&initial_c_edges))));
+
     let state_arc = Arc::new(Mutex::new(state));
     let tab_arc = Arc::new(Mutex::new(tab_mgr));
     let editor_arc = Arc::new(Mutex::new(editor_ctrl));
     let quick_arc = Arc::new(Mutex::new(quick_mgr));
     let graph_arc = Arc::new(Mutex::new(graph_ctrl));
+    let canvas_arc = Arc::new(Mutex::new(canvas_ctrl));
     let theme_arc = Arc::new(Mutex::new(theme_mgr));
     let sync_arc = Arc::new(Mutex::new(sync_ctrl));
     let sticker_arc = Arc::new(Mutex::new(sticker_ctrl));
@@ -340,6 +388,7 @@ fn main() {
                 w.set_is_graph_view(next);
 
                 if next {
+                    w.set_is_canvas_view(false);
                     if let Ok(mut gc) = graph_arc.lock() {
                         gc.wake_up();
                         for _ in 0..20 {
@@ -526,6 +575,256 @@ fn main() {
                     let edges = to_slint_graph_edges(&gc.get_visual_edges(400.0, 300.0));
                     w.set_graph_nodes(ModelRc::new(VecModel::from(nodes)));
                     w.set_graph_edges(ModelRc::new(VecModel::from(edges)));
+                }
+            }
+        });
+    }
+
+    // Callback: Alternar Visualização do Canvas 2D Infinito (Ctrl+K)
+    {
+        let app_weak = app_weak.clone();
+        let canvas_arc = Arc::clone(&canvas_arc);
+        app.on_toggle_canvas_view(move || {
+            if let Some(w) = app_weak.upgrade() {
+                let current = w.get_is_canvas_view();
+                let next = !current;
+                w.set_is_canvas_view(next);
+                if next {
+                    w.set_is_graph_view(false);
+                    if let Ok(cc) = canvas_arc.lock() {
+                        let (nodes, edges) = cc.to_visual_models();
+                        w.set_canvas_nodes(ModelRc::new(VecModel::from(to_slint_canvas_nodes(&nodes))));
+                        w.set_canvas_edges(ModelRc::new(VecModel::from(to_slint_canvas_edges(&edges))));
+                        w.set_canvas_zoom_level(cc.zoom);
+                        w.set_canvas_node_count(cc.canvas_data.node_count() as i32);
+                        w.set_canvas_edge_count(cc.canvas_data.edge_count() as i32);
+                    }
+                }
+            }
+        });
+    }
+
+    // Callback: Seleção de nó no Canvas
+    {
+        let app_weak = app_weak.clone();
+        let canvas_arc = Arc::clone(&canvas_arc);
+        app.on_canvas_node_clicked(move |node_id| {
+            if let Ok(mut cc) = canvas_arc.lock() {
+                cc.select_node(node_id.as_str());
+                if let Some(w) = app_weak.upgrade() {
+                    let sel_id: slint::SharedString = cc.selected_node_id.as_deref().unwrap_or("").into();
+                    w.set_canvas_selected_node_id(sel_id);
+                    let (nodes, _) = cc.to_visual_models();
+                    w.set_canvas_nodes(ModelRc::new(VecModel::from(to_slint_canvas_nodes(&nodes))));
+                }
+            }
+        });
+    }
+
+    // Callback: Arraste de nó no Canvas
+    {
+        let app_weak = app_weak.clone();
+        let canvas_arc = Arc::clone(&canvas_arc);
+        app.on_canvas_node_dragged(move |node_id, dx, dy| {
+            if let Ok(mut cc) = canvas_arc.lock() {
+                cc.move_node(node_id.as_str(), dx, dy);
+                if let Some(w) = app_weak.upgrade() {
+                    let (nodes, edges) = cc.to_visual_models();
+                    w.set_canvas_nodes(ModelRc::new(VecModel::from(to_slint_canvas_nodes(&nodes))));
+                    w.set_canvas_edges(ModelRc::new(VecModel::from(to_slint_canvas_edges(&edges))));
+                }
+            }
+        });
+    }
+
+    // Callback: Duplo clique em nó (abre nota vinculada no editor)
+    {
+        let app_weak = app_weak.clone();
+        let canvas_arc = Arc::clone(&canvas_arc);
+        let tab_arc = Arc::clone(&tab_arc);
+        let editor_arc = Arc::clone(&editor_arc);
+        let state_arc = Arc::clone(&state_arc);
+
+        app.on_canvas_node_double_clicked(move |node_id| {
+            let mut file_to_open: Option<String> = None;
+            if let Ok(cc) = canvas_arc.lock() {
+                if let Some(node) = cc.canvas_data.get_node(node_id.as_str()) {
+                    if let gnosis_core::canvas::CanvasNode::File(f) = node {
+                        file_to_open = Some(f.file.clone());
+                    }
+                }
+            }
+
+            if let Some(path) = file_to_open {
+                let title = path.rsplit('/').next().unwrap_or(&path).trim_end_matches(".md");
+                let content = format!("# {}\n\nNota aberta a partir do Canvas 2D.", title);
+
+                let mut icon_opt: Option<String> = None;
+                if let Ok(mut st) = state_arc.lock() {
+                    st.select_note(&path, &content);
+                    if !st.active_note_icon.is_empty() {
+                        icon_opt = Some(st.active_note_icon.clone());
+                    }
+                }
+                if let Ok(mut tm) = tab_arc.lock() {
+                    tm.open_note_with_icon(&path, title, icon_opt.clone());
+                }
+                if let Ok(mut ed) = editor_arc.lock() {
+                    ed.set_content(&content);
+                }
+
+                if let Some(w) = app_weak.upgrade() {
+                    w.set_is_canvas_view(false);
+                    w.set_active_note_title(title.into());
+                    w.set_active_note_icon(icon_opt.as_deref().unwrap_or("").into());
+                    w.set_active_note_content(content.as_str().into());
+                    if let Ok(tm) = tab_arc.lock() {
+                        let tabs = to_slint_tabs(tm.active_pane());
+                        w.set_tabs(ModelRc::new(VecModel::from(tabs)));
+                    }
+                    if let Ok(ed) = editor_arc.lock() {
+                        let ast = to_slint_ast_blocks(&ed.generate_render_blocks());
+                        w.set_ast_blocks(ModelRc::new(VecModel::from(ast)));
+                    }
+                }
+            }
+        });
+    }
+
+    // Callback: Pan no Canvas
+    {
+        let app_weak = app_weak.clone();
+        let canvas_arc = Arc::clone(&canvas_arc);
+        app.on_canvas_panned(move |dx, dy| {
+            if let Ok(mut cc) = canvas_arc.lock() {
+                cc.pan(dx, dy);
+                if let Some(w) = app_weak.upgrade() {
+                    let (nodes, edges) = cc.to_visual_models();
+                    w.set_canvas_nodes(ModelRc::new(VecModel::from(to_slint_canvas_nodes(&nodes))));
+                    w.set_canvas_edges(ModelRc::new(VecModel::from(to_slint_canvas_edges(&edges))));
+                }
+            }
+        });
+    }
+
+    // Callback: Zoom In do Canvas
+    {
+        let app_weak = app_weak.clone();
+        let canvas_arc = Arc::clone(&canvas_arc);
+        app.on_canvas_zoom_in(move || {
+            if let Ok(mut cc) = canvas_arc.lock() {
+                cc.zoom_in();
+                if let Some(w) = app_weak.upgrade() {
+                    let (nodes, edges) = cc.to_visual_models();
+                    w.set_canvas_nodes(ModelRc::new(VecModel::from(to_slint_canvas_nodes(&nodes))));
+                    w.set_canvas_edges(ModelRc::new(VecModel::from(to_slint_canvas_edges(&edges))));
+                    w.set_canvas_zoom_level(cc.zoom);
+                }
+            }
+        });
+    }
+
+    // Callback: Zoom Out do Canvas
+    {
+        let app_weak = app_weak.clone();
+        let canvas_arc = Arc::clone(&canvas_arc);
+        app.on_canvas_zoom_out(move || {
+            if let Ok(mut cc) = canvas_arc.lock() {
+                cc.zoom_out();
+                if let Some(w) = app_weak.upgrade() {
+                    let (nodes, edges) = cc.to_visual_models();
+                    w.set_canvas_nodes(ModelRc::new(VecModel::from(to_slint_canvas_nodes(&nodes))));
+                    w.set_canvas_edges(ModelRc::new(VecModel::from(to_slint_canvas_edges(&edges))));
+                    w.set_canvas_zoom_level(cc.zoom);
+                }
+            }
+        });
+    }
+
+    // Callback: Reset Zoom do Canvas (1:1)
+    {
+        let app_weak = app_weak.clone();
+        let canvas_arc = Arc::clone(&canvas_arc);
+        app.on_canvas_zoom_reset(move || {
+            if let Ok(mut cc) = canvas_arc.lock() {
+                cc.zoom_reset();
+                if let Some(w) = app_weak.upgrade() {
+                    let (nodes, edges) = cc.to_visual_models();
+                    w.set_canvas_nodes(ModelRc::new(VecModel::from(to_slint_canvas_nodes(&nodes))));
+                    w.set_canvas_edges(ModelRc::new(VecModel::from(to_slint_canvas_edges(&edges))));
+                    w.set_canvas_zoom_level(cc.zoom);
+                }
+            }
+        });
+    }
+
+    // Callback: Enquadrar tudo (Fit All) no Canvas
+    {
+        let app_weak = app_weak.clone();
+        let canvas_arc = Arc::clone(&canvas_arc);
+        app.on_canvas_fit_all(move || {
+            if let Ok(mut cc) = canvas_arc.lock() {
+                cc.fit_all(800.0, 600.0);
+                if let Some(w) = app_weak.upgrade() {
+                    let (nodes, edges) = cc.to_visual_models();
+                    w.set_canvas_nodes(ModelRc::new(VecModel::from(to_slint_canvas_nodes(&nodes))));
+                    w.set_canvas_edges(ModelRc::new(VecModel::from(to_slint_canvas_edges(&edges))));
+                    w.set_canvas_zoom_level(cc.zoom);
+                }
+            }
+        });
+    }
+
+    // Callback: Adicionar Cartão de Texto no Canvas
+    {
+        let app_weak = app_weak.clone();
+        let canvas_arc = Arc::clone(&canvas_arc);
+        app.on_canvas_add_text_requested(move || {
+            if let Ok(mut cc) = canvas_arc.lock() {
+                let id = cc.add_text_card("Nova anotação de ideia no Canvas...");
+                if let Some(w) = app_weak.upgrade() {
+                    let (nodes, edges) = cc.to_visual_models();
+                    w.set_canvas_nodes(ModelRc::new(VecModel::from(to_slint_canvas_nodes(&nodes))));
+                    w.set_canvas_edges(ModelRc::new(VecModel::from(to_slint_canvas_edges(&edges))));
+                    w.set_canvas_node_count(cc.canvas_data.node_count() as i32);
+                    w.set_canvas_selected_node_id(id.into());
+                }
+            }
+        });
+    }
+
+    // Callback: Adicionar Cartão de Nota do Vault no Canvas
+    {
+        let app_weak = app_weak.clone();
+        let canvas_arc = Arc::clone(&canvas_arc);
+        app.on_canvas_add_note_requested(move || {
+            if let Ok(mut cc) = canvas_arc.lock() {
+                let id = cc.add_file_card("01_Projetos/Rust/Gnosis Core.md");
+                if let Some(w) = app_weak.upgrade() {
+                    let (nodes, edges) = cc.to_visual_models();
+                    w.set_canvas_nodes(ModelRc::new(VecModel::from(to_slint_canvas_nodes(&nodes))));
+                    w.set_canvas_edges(ModelRc::new(VecModel::from(to_slint_canvas_edges(&edges))));
+                    w.set_canvas_node_count(cc.canvas_data.node_count() as i32);
+                    w.set_canvas_selected_node_id(id.into());
+                }
+            }
+        });
+    }
+
+    // Callback: Excluir Nó Selecionado no Canvas
+    {
+        let app_weak = app_weak.clone();
+        let canvas_arc = Arc::clone(&canvas_arc);
+        app.on_canvas_delete_selected_requested(move || {
+            if let Ok(mut cc) = canvas_arc.lock() {
+                cc.delete_selected();
+                if let Some(w) = app_weak.upgrade() {
+                    let (nodes, edges) = cc.to_visual_models();
+                    w.set_canvas_nodes(ModelRc::new(VecModel::from(to_slint_canvas_nodes(&nodes))));
+                    w.set_canvas_edges(ModelRc::new(VecModel::from(to_slint_canvas_edges(&edges))));
+                    w.set_canvas_node_count(cc.canvas_data.node_count() as i32);
+                    w.set_canvas_edge_count(cc.canvas_data.edge_count() as i32);
+                    w.set_canvas_selected_node_id("".into());
                 }
             }
         });
@@ -909,6 +1208,7 @@ fn main() {
         let state_arc = Arc::clone(&state_arc);
         let editor_arc = Arc::clone(&editor_arc);
         let graph_arc = Arc::clone(&graph_arc);
+        let canvas_arc = Arc::clone(&canvas_arc);
         let theme_arc = Arc::clone(&theme_arc);
 
         app.on_quick_item_clicked(move |idx| {
@@ -943,6 +1243,7 @@ fn main() {
 
                         if let Some(w) = app_weak.upgrade() {
                             w.set_is_graph_view(false);
+                            w.set_is_canvas_view(false);
                             w.set_active_note_title(title.as_str().into());
                             w.set_active_note_content(content.as_str().into());
 
@@ -962,12 +1263,26 @@ fn main() {
                         if action_id == "cmd_graph" {
                             if let Some(w) = app_weak.upgrade() {
                                 w.set_is_graph_view(true);
+                                w.set_is_canvas_view(false);
                                 if let Ok(mut gc) = graph_arc.lock() {
                                     gc.wake_up();
                                     let nodes = to_slint_graph_nodes(&gc.get_visual_nodes(400.0, 300.0));
                                     let edges = to_slint_graph_edges(&gc.get_visual_edges(400.0, 300.0));
                                     w.set_graph_nodes(ModelRc::new(VecModel::from(nodes)));
                                     w.set_graph_edges(ModelRc::new(VecModel::from(edges)));
+                                }
+                            }
+                        } else if action_id == "cmd_canvas" {
+                            if let Some(w) = app_weak.upgrade() {
+                                w.set_is_canvas_view(true);
+                                w.set_is_graph_view(false);
+                                if let Ok(cc) = canvas_arc.lock() {
+                                    let (nodes, edges) = cc.to_visual_models();
+                                    w.set_canvas_nodes(ModelRc::new(VecModel::from(to_slint_canvas_nodes(&nodes))));
+                                    w.set_canvas_edges(ModelRc::new(VecModel::from(to_slint_canvas_edges(&edges))));
+                                    w.set_canvas_zoom_level(cc.zoom);
+                                    w.set_canvas_node_count(cc.canvas_data.node_count() as i32);
+                                    w.set_canvas_edge_count(cc.canvas_data.edge_count() as i32);
                                 }
                             }
                         } else if action_id == "cmd_toggle_sidebar" {

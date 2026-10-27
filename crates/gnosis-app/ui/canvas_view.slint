@@ -1,0 +1,476 @@
+import { Theme } from "theme.slint";
+
+export struct CanvasNodeSlint {
+    id: string,
+    node_type: string, // "text" | "file" | "link" | "group"
+    screen_x: float,
+    screen_y: float,
+    screen_width: float,
+    screen_height: float,
+    color_hex: string,
+    title: string,
+    content: string,
+    subpath: string,
+    is_selected: bool,
+}
+
+export struct CanvasEdgeSlint {
+    id: string,
+    from_node: string,
+    from_x: float,
+    from_y: float,
+    to_node: string,
+    to_x: float,
+    to_y: float,
+    color_hex: string,
+    label: string,
+    has_arrow: bool,
+}
+
+export component CanvasView inherits Rectangle {
+    in property <[CanvasNodeSlint]> nodes: [];
+    in property <[CanvasEdgeSlint]> edges: [];
+    in property <float> zoom_level: 1.0;
+    in property <string> selected_node_id: "";
+    in property <int> node_count: 0;
+    in property <int> edge_count: 0;
+
+    callback node_clicked(string);
+    callback node_dragged(string, float, float);
+    callback node_double_clicked(string);
+    callback canvas_panned(float, float);
+    callback zoom_in();
+    callback zoom_out();
+    callback zoom_reset();
+    callback fit_all();
+    callback add_text_requested();
+    callback add_note_requested();
+    callback delete_selected_requested();
+
+    background: Theme.background;
+    clip: true;
+
+    // 1. Fundo infinito com grade de pontos e captura de Pan
+    canvas_touch := TouchArea {
+        width: 100%;
+        height: 100%;
+
+        moved => {
+            // Arraste de pan na tela quando não interceptado por um nó
+            root.canvas_panned(self.mouse-x - self.pressed-x, self.mouse-y - self.pressed-y);
+        }
+
+        clicked => {
+            root.node_clicked(""); // Desmarca seleção
+        }
+    }
+
+    // 2. Camada de Grupos (Renderizados atrás de todos os outros cartões)
+    for node in root.nodes: Rectangle {
+        if (node.node_type == "group"): Rectangle {
+            x: node.screen_x * 1px;
+            y: node.screen_y * 1px;
+            width: node.screen_width * 1px;
+            height: node.screen_height * 1px;
+            border-radius: 8px;
+            background: #1e1e2e44; // Translúcido escuro
+            border-width: node.is_selected ? 2px : 1.5px;
+            border-color: node.is_selected ? Theme.accent : #585b7088;
+
+            // Rótulo do Grupo
+            Rectangle {
+                x: 12px;
+                y: 8px;
+                height: 22px;
+                background: Theme.sidebar_bg;
+                border-radius: 4px;
+                border-width: 1px;
+                border-color: Theme.border;
+
+                HorizontalLayout {
+                    padding-left: 8px;
+                    padding-right: 8px;
+                    alignment: center;
+
+                    Text {
+                        text: (node.title != "") ? node.title : "Grupo";
+                        color: Theme.text_primary;
+                        font-size: 11px;
+                        font-weight: 700;
+                        vertical-alignment: center;
+                    }
+                }
+            }
+
+            TouchArea {
+                clicked => { root.node_clicked(node.id); }
+                moved => {
+                    root.node_dragged(node.id, self.mouse-x - self.pressed-x, self.mouse-y - self.pressed-y);
+                }
+            }
+        }
+    }
+
+    // 3. Camada de Arestas / Conexões Direcionais
+    for edge in root.edges: Path {
+        stroke: (edge.color_hex != "") ? #89b4fa : #6c7086;
+        stroke-width: 2px;
+
+        // Linha conectando origem e destino
+        MoveTo { x: edge.from_x; y: edge.from_y; }
+        LineTo { x: edge.to_x; y: edge.to_y; }
+    }
+
+    // Rótulos nas Arestas (se houver)
+    for edge in root.edges: Rectangle {
+        if (edge.label != ""): Rectangle {
+            x: ((edge.from_x + edge.to_x) / 2 - self.width / 2) * 1px;
+            y: ((edge.from_y + edge.to_y) / 2 - self.height / 2) * 1px;
+            height: 20px;
+            background: Theme.sidebar_bg;
+            border-radius: 4px;
+            border-width: 1px;
+            border-color: Theme.border;
+
+            HorizontalLayout {
+                padding-left: 6px;
+                padding-right: 6px;
+                alignment: center;
+
+                Text {
+                    text: edge.label;
+                    color: Theme.text_secondary;
+                    font-size: 10px;
+                    vertical-alignment: center;
+                }
+            }
+        }
+    }
+
+    // 4. Camada de Cartões (Nós: Text, File, Link)
+    for node in root.nodes: Rectangle {
+        if (node.node_type != "group"): Rectangle {
+            x: node.screen_x * 1px;
+            y: node.screen_y * 1px;
+            width: node.screen_width * 1px;
+            height: node.screen_height * 1px;
+            border-radius: 6px;
+            background: Theme.sidebar_bg;
+            border-width: node.is_selected ? 2px : 1px;
+            border-color: node.is_selected ? Theme.accent : Theme.border;
+            clip: true;
+
+            // Faixa colorida superior
+            Rectangle {
+                x: 0px;
+                y: 0px;
+                width: 100%;
+                height: 4px;
+                background: (node.color_hex != "") ? #cba6f7 : Theme.accent;
+            }
+
+            VerticalLayout {
+                padding: 10px;
+                spacing: 6px;
+
+                // Cabeçalho do Cartão
+                HorizontalLayout {
+                    spacing: 6px;
+                    height: 22px;
+                    alignment: space-between;
+
+                    HorizontalLayout {
+                        spacing: 4px;
+                        alignment: start;
+
+                        Text {
+                            text: (node.node_type == "text") ? "📝 Texto" :
+                                  (node.node_type == "file") ? "📄 Nota" : "🔗 Link";
+                            color: Theme.text_muted;
+                            font-size: 10px;
+                            font-weight: 700;
+                            vertical-alignment: center;
+                        }
+
+                        if (node.title != ""): Text {
+                            text: "• " + node.title;
+                            color: Theme.text_primary;
+                            font-size: 11px;
+                            font-weight: 600;
+                            overflow: elide;
+                            vertical-alignment: center;
+                        }
+                    }
+
+                    if (node.node_type == "file"): Rectangle {
+                        width: 18px;
+                        height: 18px;
+                        border-radius: 3px;
+                        background: touch_open.has-hover ? Theme.surface_hover : transparent;
+
+                        Text {
+                            text: "↗";
+                            color: Theme.text_muted;
+                            font-size: 11px;
+                            vertical-alignment: center;
+                            horizontal-alignment: center;
+                        }
+
+                        touch_open := TouchArea {
+                            clicked => { root.node_double_clicked(node.id); }
+                        }
+                    }
+                }
+
+                // Linha divisória
+                Rectangle {
+                    height: 1px;
+                    background: Theme.border;
+                }
+
+                // Conteúdo do Cartão (Texto / Resumo / Subpath)
+                Flickable {
+                    vertical-stretch: 1;
+
+                    Text {
+                        text: (node.content != "") ? node.content :
+                              (node.subpath != "") ? node.subpath : "(sem conteúdo)";
+                        color: Theme.text_secondary;
+                        font-size: 12px;
+                        wrap: word-wrap;
+                    }
+                }
+            }
+
+            // Área de toque para seleção e arraste do cartão
+            card_touch := TouchArea {
+                clicked => {
+                    root.node_clicked(node.id);
+                }
+
+                moved => {
+                    root.node_dragged(node.id, self.mouse-x - self.pressed-x, self.mouse-y - self.pressed-y);
+                }
+            }
+        }
+    }
+
+    // 5. HUD Flutuante Superior Esquerdo (Controles de Câmera e Status)
+    Rectangle {
+        x: 14px;
+        y: 14px;
+        height: 36px;
+        background: Theme.sidebar_bg;
+        border-radius: 6px;
+        border-width: 1px;
+        border-color: Theme.border;
+
+        HorizontalLayout {
+            padding-left: 10px;
+            padding-right: 10px;
+            spacing: 8px;
+            alignment: center;
+
+            // Indicador de Zoom
+            Text {
+                text: "🔍 " + Math.round(root.zoom_level * 100) + "%";
+                color: Theme.text_primary;
+                font-size: 11px;
+                font-weight: 600;
+                vertical-alignment: center;
+            }
+
+            Rectangle {
+                width: 1px;
+                height: 16px;
+                background: Theme.border;
+                y: (parent.height - self.height) / 2;
+            }
+
+            // Botão Zoom In (+)
+            Rectangle {
+                width: 24px;
+                height: 24px;
+                border-radius: 4px;
+                background: touch_zin.has-hover ? Theme.surface_hover : transparent;
+
+                Text {
+                    text: "➕";
+                    font-size: 10px;
+                    vertical-alignment: center;
+                    horizontal-alignment: center;
+                }
+
+                touch_zin := TouchArea {
+                    clicked => { root.zoom_in(); }
+                }
+            }
+
+            // Botão Zoom Out (-)
+            Rectangle {
+                width: 24px;
+                height: 24px;
+                border-radius: 4px;
+                background: touch_zout.has-hover ? Theme.surface_hover : transparent;
+
+                Text {
+                    text: "➖";
+                    font-size: 10px;
+                    vertical-alignment: center;
+                    horizontal-alignment: center;
+                }
+
+                touch_zout := TouchArea {
+                    clicked => { root.zoom_out(); }
+                }
+            }
+
+            // Botão Reset Zoom (1:1)
+            Rectangle {
+                width: 32px;
+                height: 24px;
+                border-radius: 4px;
+                background: touch_zrst.has-hover ? Theme.surface_hover : transparent;
+
+                Text {
+                    text: "100%";
+                    color: Theme.text_muted;
+                    font-size: 10px;
+                    vertical-alignment: center;
+                    horizontal-alignment: center;
+                }
+
+                touch_zrst := TouchArea {
+                    clicked => { root.zoom_reset(); }
+                }
+            }
+
+            // Botão Fit All
+            Rectangle {
+                width: 26px;
+                height: 24px;
+                border-radius: 4px;
+                background: touch_fit.has-hover ? Theme.surface_hover : transparent;
+
+                Text {
+                    text: "🎯";
+                    font-size: 11px;
+                    vertical-alignment: center;
+                    horizontal-alignment: center;
+                }
+
+                touch_fit := TouchArea {
+                    clicked => { root.fit_all(); }
+                }
+            }
+        }
+    }
+
+    // 6. HUD Flutuante Superior Direito (Criação de Cartões e Métricas)
+    Rectangle {
+        x: parent.width - self.width - 14px;
+        y: 14px;
+        height: 36px;
+        background: Theme.sidebar_bg;
+        border-radius: 6px;
+        border-width: 1px;
+        border-color: Theme.border;
+
+        HorizontalLayout {
+            padding-left: 10px;
+            padding-right: 10px;
+            spacing: 8px;
+            alignment: center;
+
+            // Contador de Nós e Arestas
+            Text {
+                text: "Nós: " + root.node_count + " | Arestas: " + root.edge_count;
+                color: Theme.text_muted;
+                font-size: 11px;
+                vertical-alignment: center;
+            }
+
+            Rectangle {
+                width: 1px;
+                height: 16px;
+                background: Theme.border;
+                y: (parent.height - self.height) / 2;
+            }
+
+            // Adicionar Cartão de Texto
+            Rectangle {
+                height: 24px;
+                border-radius: 4px;
+                background: touch_add_text.has-hover ? Theme.surface_hover : Theme.surface;
+                border-width: 1px;
+                border-color: Theme.border;
+
+                HorizontalLayout {
+                    padding-left: 8px;
+                    padding-right: 8px;
+                    alignment: center;
+                    spacing: 4px;
+
+                    Text {
+                        text: "📝 + Texto";
+                        color: Theme.text_primary;
+                        font-size: 11px;
+                        font-weight: 600;
+                        vertical-alignment: center;
+                    }
+                }
+
+                touch_add_text := TouchArea {
+                    clicked => { root.add_text_requested(); }
+                }
+            }
+
+            // Adicionar Cartão de Nota
+            Rectangle {
+                height: 24px;
+                border-radius: 4px;
+                background: touch_add_note.has-hover ? Theme.surface_hover : Theme.surface;
+                border-width: 1px;
+                border-color: Theme.border;
+
+                HorizontalLayout {
+                    padding-left: 8px;
+                    padding-right: 8px;
+                    alignment: center;
+                    spacing: 4px;
+
+                    Text {
+                        text: "📄 + Nota";
+                        color: Theme.text_primary;
+                        font-size: 11px;
+                        font-weight: 600;
+                        vertical-alignment: center;
+                    }
+                }
+
+                touch_add_note := TouchArea {
+                    clicked => { root.add_note_requested(); }
+                }
+            }
+
+            // Excluir Nó Selecionado
+            if (root.selected_node_id != ""): Rectangle {
+                width: 24px;
+                height: 24px;
+                border-radius: 4px;
+                background: touch_del.has-hover ? Theme.error : transparent;
+
+                Text {
+                    text: "🗑️";
+                    font-size: 10px;
+                    vertical-alignment: center;
+                    horizontal-alignment: center;
+                }
+
+                touch_del := TouchArea {
+                    clicked => { root.delete_selected_requested(); }
+                }
+            }
+        }
+    }
+}
