@@ -273,15 +273,16 @@ impl SubgraphManager {
 mod tests {
     use super::*;
     use crate::model::EdgeType;
+    use gnosis_core::VaultPath;
 
     fn build_sample_graph() -> KnowledgeGraph {
         let mut graph = KnowledgeGraph::new();
 
         // Nós: A -> B -> C -> D
-        graph.add_or_update_node("A", "Nota A", NodeType::Note, Some("Inbox/A.md".into()));
-        graph.add_or_update_node("B", "Nota B", NodeType::Note, Some("Projetos/B.md".into()));
-        graph.add_or_update_node("C", "Nota C", NodeType::Note, Some("Projetos/C.md".into()));
-        graph.add_or_update_node("D", "Nota D", NodeType::Note, Some("Arquivo/D.md".into()));
+        graph.add_or_update_node("A", "Nota A", NodeType::Note, VaultPath::parse("Inbox/A.md").ok());
+        graph.add_or_update_node("B", "Nota B", NodeType::Note, VaultPath::parse("Projetos/B.md").ok());
+        graph.add_or_update_node("C", "Nota C", NodeType::Note, VaultPath::parse("Projetos/C.md").ok());
+        graph.add_or_update_node("D", "Nota D", NodeType::Note, VaultPath::parse("Arquivo/D.md").ok());
         graph.add_or_update_node("Ghost", "Fantasma", NodeType::Unresolved, None);
         graph.add_or_update_node("Orphan", "Isolada", NodeType::Note, None);
         graph.add_or_update_node("Image.png", "Anexo", NodeType::Attachment, None);

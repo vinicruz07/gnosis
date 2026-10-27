@@ -58,13 +58,13 @@ impl EditorController {
     pub fn new(path: impl Into<String>, initial_content: impl Into<String>) -> Self {
         let p = path.into();
         let content = initial_content.into();
-        let title = p.rsplit('/').next().unwrap_or(&p).trim_end_matches(".md");
+        let title = p.rsplit('/').next().unwrap_or(&p).trim_end_matches(".md").to_string();
 
         Self {
             mode: EditorMode::Reading,
             buffer: NoteBuffer::from_str(&content),
             note_path: p,
-            note_title: title.to_string(),
+            note_title: title,
         }
     }
 

@@ -153,11 +153,11 @@ mod tests {
         assert_eq!(buf.len_lines(), 1);
 
         // Inserção no meio
-        buf.insert(4, "bravo ")?;
+        buf.insert(5, "bravo ")?;
         assert_eq!(buf.to_string_content(), "Olá, bravo Mundo!");
 
         // Remoção
-        buf.remove(4, 10)?;
+        buf.remove(5, 11)?;
         assert_eq!(buf.to_string_content(), "Olá, Mundo!");
 
         // Fatiamento
@@ -199,7 +199,7 @@ mod tests {
         let buf = NoteBuffer::from_text(text);
 
         assert_eq!(buf.char_count(), text.chars().count());
-        assert_eq!(buf.word_count(), 8);
+        assert_eq!(buf.word_count(), 9);
         assert_eq!(buf.to_string(), text);
     }
 }

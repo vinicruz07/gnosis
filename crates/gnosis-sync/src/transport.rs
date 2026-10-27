@@ -255,6 +255,7 @@ impl HybridRoomSynchronizer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::SyncError;
 
     #[tokio::test]
     async fn test_byos_store_and_forward_lifecycle() -> Result<()> {

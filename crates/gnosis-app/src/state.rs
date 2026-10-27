@@ -231,7 +231,7 @@ mod tests {
         state.select_note("Inbox/Ideias.md", "Uma duas três quatro palavras.");
         assert_eq!(state.active_note_title, "Ideias");
         assert_eq!(state.word_count(), 5);
-        assert_eq!(state.char_count(), 31);
+        assert_eq!(state.char_count(), 30);
     }
 
     #[test]

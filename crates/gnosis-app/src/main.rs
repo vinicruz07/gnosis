@@ -3,7 +3,7 @@
 //! Inicialização do Slint UI com renderizador leve, abas, split view,
 //! Quick Switcher, editor ágil, Grafo 2D e sistema dinâmico de temas místico via TOML.
 
-#![forbid(unsafe_code)]
+#![deny(unsafe_code)]
 #![deny(clippy::unwrap_used)]
 #![deny(clippy::expect_used)]
 #![deny(clippy::panic)]
@@ -155,7 +155,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let app = AppWindow::new()?;
 
     // Inicializa gerenciador de temas com estética mística
-    let mut theme_mgr = ThemeManager::new();
+    let theme_mgr = ThemeManager::new();
     let initial_theme = theme_mgr.active_theme().clone();
     apply_theme_to_slint(&app, &initial_theme);
 
@@ -194,7 +194,7 @@ fn main() {
     tab_mgr.open_note("01_Projetos/Rust/Gnosis Core.md", "Gnosis Core");
 
     // Inicializa controlador do editor com Ropey
-    let mut editor_ctrl = EditorController::new("01_Projetos/Rust/Gnosis Core.md", sample_markdown);
+    let editor_ctrl = EditorController::new("01_Projetos/Rust/Gnosis Core.md", sample_markdown);
 
     // Inicializa Quick Switcher com as notas catalogadas
     let mut quick_mgr = QuickSwitcherManager::new();
@@ -875,7 +875,7 @@ fn main() {
                         let path = action_id;
                         let content = format!(
                             "# {}\n\nNota aberta via Quick Switcher instantâneo.\n\n```rust\n// Código na nota {}\n```\n\n> [!NOTE]\n> Nota ativa pronta para edição ágil.",
-                            title, path, path
+                            title, path
                         );
 
                         if let Ok(mut tm) = tab_arc.lock() {

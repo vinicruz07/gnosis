@@ -207,7 +207,7 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn test_scanner_with_synthetic_vault() -> CoreResult<()> {
+    async fn test_scanner_with_synthetic_vault() -> gnosis_core::Result<()> {
         let temp_dir = std::env::temp_dir().join(format!("gnosis_scan_test_{}", std::process::id()));
         let _ = tokio::fs::create_dir_all(&temp_dir).await;
 

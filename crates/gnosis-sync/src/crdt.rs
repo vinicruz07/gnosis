@@ -194,9 +194,13 @@ mod tests {
         let path = VaultPath::parse("Anotacoes/Pesquisa.md")?;
         let initial_text = "# Pesquisa de Rust\n";
 
-        // Cria instância no computador de Alice e de Bob
+        // Cria instância no computador de Alice com o texto inicial
         let doc_alice = CollaborativeDoc::new(path.clone(), 1, initial_text);
-        let doc_bob = CollaborativeDoc::new(path, 2, initial_text);
+
+        // Bob conecta-se à sala e sincroniza o estado inicial de Alice
+        let initial_snapshot = doc_alice.encode_full_state();
+        let doc_bob = CollaborativeDoc::new(path, 2, "");
+        doc_bob.apply_remote_update(&initial_snapshot)?;
 
         // Alice e Bob digitam SIMULTANEAMENTE sem comunicação prévia
         // Alice digita "Alice diz ola. " na posição 19
