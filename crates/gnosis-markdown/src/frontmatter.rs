@@ -320,7 +320,7 @@ mod tests {
 
     #[test]
     fn test_parse_valid_frontmatter() {
-        let text = r#"---
+        let text = r##"---
 title: Minha Nota Incrível
 tags:
   - rust
@@ -333,7 +333,7 @@ custom_status: active
 ---
 # Conteúdo da Nota
 Texto principal aqui.
-"#;
+"##;
 
         let (fm_opt, remainder) = parse_frontmatter(text);
         assert!(fm_opt.is_some());
