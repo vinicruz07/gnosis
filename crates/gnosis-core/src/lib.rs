@@ -11,6 +11,7 @@
 #![deny(clippy::panic)]
 
 pub mod buffer;
+pub mod canvas;
 pub mod config;
 pub mod error;
 pub mod index;
@@ -21,6 +22,10 @@ pub mod vfs;
 pub mod watcher;
 
 pub use buffer::NoteBuffer;
+pub use canvas::{
+    BackgroundStyle, CanvasData, CanvasEdge, CanvasNode, EdgeEnd, FileNode, GroupNode, LinkNode,
+    NodeSide, TextNode,
+};
 pub use config::{VaultConfig, GNOSIS_CONFIG_PATH, OBSIDIAN_WORKSPACE_PATH};
 pub use error::{CoreError, Result};
 pub use index::VaultIndex;
