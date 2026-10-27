@@ -23,8 +23,10 @@ export component AppWindow inherits Window {
 
     // Propriedades do Editor e Modo de Visualização
     in property <string> active_note_title: "Boas-vindas ao Gnosis";
+    in property <string> active_note_icon: "";
     in property <string> active_note_content: "# Bem-vindo ao Gnosis\n\nRecompilação de alto desempenho do Obsidian em Rust puro.";
     in property <bool> is_editing: false;
+
     in property <[RenderBlockData]> ast_blocks: [];
 
     // Propriedades da Visualização do Grafo 2D
@@ -194,14 +196,26 @@ export component AppWindow inherits Window {
                         padding-right: 16px;
                         alignment: space-between;
 
-                        // Título da Nota ou do Grafo
-                        Text {
-                            text: root.is_graph_view ? "🕸️ Grafo de Conhecimento Global" : root.active_note_title;
-                            color: Theme.text_primary;
-                            font-size: 16px;
-                            font-weight: 700;
-                            vertical-alignment: center;
+                        // Título da Nota ou do Grafo com Ícone/Sticker
+                        HorizontalLayout {
+                            spacing: 8px;
+                            alignment: start;
+
+                            if (!root.is_graph_view && root.active_note_icon != ""): Text {
+                                text: root.active_note_icon;
+                                font-size: 18px;
+                                vertical-alignment: center;
+                            }
+
+                            Text {
+                                text: root.is_graph_view ? "🕸️ Grafo de Conhecimento Global" : root.active_note_title;
+                                color: Theme.text_primary;
+                                font-size: 16px;
+                                font-weight: 700;
+                                vertical-alignment: center;
+                            }
                         }
+
 
                         // Ações Rápidas: Alternar Grafo, Alternar Edição/Leitura e Quick Switcher
                         HorizontalLayout {

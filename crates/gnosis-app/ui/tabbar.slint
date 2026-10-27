@@ -7,6 +7,7 @@ export struct TabData {
     is_active: bool,
     is_pinned: bool,
     is_modified: bool,
+    icon: string,
 }
 
 export component TabBar inherits Rectangle {
@@ -124,6 +125,12 @@ export component TabBar inherits Rectangle {
                                 vertical-alignment: center;
                             }
 
+                            if (tab.icon != ""): Text {
+                                text: tab.icon;
+                                font-size: 11px;
+                                vertical-alignment: center;
+                            }
+
                             Text {
                                 text: tab.title;
                                 color: tab.is_active ? Theme.accent : Theme.text_secondary;
@@ -133,6 +140,7 @@ export component TabBar inherits Rectangle {
                                 vertical-alignment: center;
                             }
                         }
+
 
                         // Indicador de alteração ou Botão Fechar
                         HorizontalLayout {

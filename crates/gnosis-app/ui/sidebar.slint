@@ -8,6 +8,7 @@ export struct TreeItemData {
     is_expanded: bool,
     indent_level: int,
     is_active: bool,
+    icon: string,
 }
 
 export component Sidebar inherits Rectangle {
@@ -124,12 +125,13 @@ export component Sidebar inherits Rectangle {
                         spacing: 6px;
                         alignment: start;
 
-                        // Ícone Pasta ou Nota
+                        // Ícone Pasta ou Nota (com suporte a sticker/emoji)
                         Text {
-                            text: item.is_folder ? (item.is_expanded ? "📂" : "📁") : "📄";
+                            text: item.is_folder ? (item.is_expanded ? "📂" : "📁") : (item.icon != "" ? item.icon : "📄");
                             font-size: 11px;
                             vertical-alignment: center;
                         }
+
 
                         // Nome do Arquivo / Pasta
                         Text {

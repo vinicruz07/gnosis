@@ -61,6 +61,7 @@ fn to_slint_tree(items: &[TreeItemModel]) -> Vec<TreeItemData> {
             is_expanded: item.is_expanded,
             indent_level: item.indent_level,
             is_active: item.is_active,
+            icon: item.icon.as_str().into(),
         })
         .collect()
 }
@@ -76,9 +77,11 @@ fn to_slint_tabs(pane: &EditorPane) -> Vec<TabData> {
             is_active: idx == pane.active_tab_index,
             is_pinned: tab.is_pinned,
             is_modified: tab.is_modified,
+            icon: tab.icon.as_deref().unwrap_or("").into(),
         })
         .collect()
 }
+
 
 fn to_slint_quick_items(items: &[QuickItem], selected_idx: usize) -> Vec<QuickItemData> {
     items
@@ -170,9 +173,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "Diário de Bordo.md",
     ];
     state.populate_from_paths(initial_paths);
+    state.set_entry_icon("01_Projetos/Rust/Gnosis Core.md", Some("🧠".to_string()));
+    state.set_entry_icon("00_Inbox/Ideias Rápidas.md", Some("💡".to_string()));
+    state.set_entry_icon("02_Estudos/Grafos e Física 2D.md", Some("🕸️".to_string()));
+    state.set_entry_icon("Diário de Bordo.md", Some("📖".to_string()));
+    state.set_entry_icon("03_Arquivo/2026/Planejamento.md", Some("📅".to_string()));
+    state.set_entry_icon("01_Projetos/Rust/Slint Shell.md", Some("🎨".to_string()));
 
     // Conteúdo demonstrativo rico com múltiplos blocos AST
-    let sample_markdown = r#"# Gnosis Core & Temas Filosóficos
+    let sample_markdown = r#"---
+title: Gnosis Core
+icon: 🧠
+color: "#ffaa00"
+---
+# Gnosis Core & Temas Filosóficos
 Recompilação de alto desempenho do Obsidian em Rust puro com temas conceituais:
 - **Abyss**: O vazio insondável e o silêncio primordial para introspecção.
 - **Aether**: O quinto elemento etéreo de luz translúcida e pensamento puro.
@@ -189,9 +203,10 @@ fn main() {
 > Pressione `Ctrl+Shift+T` ou clique no selo de tema na barra de status para alternar.
 "#;
 
-    // Inicializa gerenciador de abas
+    // Inicializa gerenciador de abas com ícone
     let mut tab_mgr = TabManager::new();
-    tab_mgr.open_note("01_Projetos/Rust/Gnosis Core.md", "Gnosis Core");
+    tab_mgr.open_note_with_icon("01_Projetos/Rust/Gnosis Core.md", "Gnosis Core", Some("🧠".to_string()));
+
 
     // Inicializa controlador do editor com Ropey
     let editor_ctrl = EditorController::new("01_Projetos/Rust/Gnosis Core.md", sample_markdown);
@@ -231,6 +246,7 @@ fn main() {
     // Configura propriedades iniciais na janela
     app.set_vault_name(state.vault_name.as_str().into());
     app.set_active_note_title("Gnosis Core".into());
+    app.set_active_note_icon("🧠".into());
     app.set_active_note_content(editor_ctrl.content().as_str().into());
     app.set_is_editing(editor_ctrl.mode == EditorMode::Edit);
     app.set_word_count(editor_ctrl.word_count() as i32);
@@ -330,11 +346,15 @@ fn main() {
 
             let content = format!("# {}\n\nNota aberta a partir do nó do Grafo de Conhecimento.", title);
 
+            let mut icon_opt: Option<String> = None;
             if let Ok(mut st) = state_arc.lock() {
                 st.select_note(path, &content);
+                if !st.active_note_icon.is_empty() {
+                    icon_opt = Some(st.active_note_icon.clone());
+                }
             }
             if let Ok(mut tm) = tab_arc.lock() {
-                tm.open_note(path, title);
+                tm.open_note_with_icon(path, title, icon_opt.clone());
             }
             if let Ok(mut ed) = editor_arc.lock() {
                 ed.set_content(&content);
@@ -343,6 +363,7 @@ fn main() {
             if let Some(w) = app_weak.upgrade() {
                 w.set_is_graph_view(false);
                 w.set_active_note_title(title.into());
+                w.set_active_note_icon(icon_opt.as_deref().unwrap_or("").into());
                 w.set_active_note_content(content.as_str().into());
 
                 if let Ok(tm) = tab_arc.lock() {
@@ -596,8 +617,12 @@ fn main() {
                 title, note_str
             );
 
+            let mut icon_opt: Option<String> = None;
             if let Ok(mut st) = state_arc.lock() {
                 st.select_note(note_str, &content);
+                if !st.active_note_icon.is_empty() {
+                    icon_opt = Some(st.active_note_icon.clone());
+                }
             }
 
             if let Ok(mut ed) = editor_arc.lock() {
@@ -607,11 +632,12 @@ fn main() {
             }
 
             if let Ok(mut tm) = tab_arc.lock() {
-                tm.open_note(note_str, title);
+                tm.open_note_with_icon(note_str, title, icon_opt.clone());
 
                 if let Some(w) = app_weak.upgrade() {
                     w.set_is_graph_view(false);
                     w.set_active_note_title(title.into());
+                    w.set_active_note_icon(icon_opt.as_deref().unwrap_or("").into());
                     w.set_active_note_content(content.as_str().into());
                     w.set_can_go_back(tm.history.can_go_back());
                     w.set_can_go_forward(tm.history.can_go_forward());
@@ -644,6 +670,7 @@ fn main() {
                     if let Some(tab) = tm.active_pane().active_tab() {
                         let title = tab.title.clone();
                         let path = tab.path.clone();
+                        let icon_str = tab.icon.clone().unwrap_or_default();
                         let content = format!("# {}\n\nConteúdo restaurado da aba `{}`.", title, path);
 
                         if let Ok(mut ed) = editor_arc.lock() {
@@ -653,6 +680,7 @@ fn main() {
                         if let Some(w) = app_weak.upgrade() {
                             w.set_is_graph_view(false);
                             w.set_active_note_title(title.as_str().into());
+                            w.set_active_note_icon(icon_str.as_str().into());
                             w.set_active_note_content(content.as_str().into());
 
                             let tabs = to_slint_tabs(tm.active_pane());

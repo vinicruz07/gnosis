@@ -10,6 +10,7 @@ pub struct FileTreeEntry {
     pub path: String,
     pub is_folder: bool,
     pub parent_path: Option<String>,
+    pub icon: Option<String>,
 }
 
 /// Item projetado para consumo do modelo de renderização da UI Slint.
@@ -22,6 +23,7 @@ pub struct TreeItemModel {
     pub is_expanded: bool,
     pub indent_level: i32,
     pub is_active: bool,
+    pub icon: String,
 }
 
 /// Estado global da interface da aplicação.
@@ -31,6 +33,7 @@ pub struct AppState {
     pub vault_path: String,
     pub active_note_path: Option<String>,
     pub active_note_title: String,
+    pub active_note_icon: String,
     pub active_note_content: String,
     pub sidebar_collapsed: bool,
     pub sync_status: String,
@@ -46,6 +49,7 @@ impl AppState {
             vault_path: vault_path.into(),
             active_note_path: None,
             active_note_title: "Boas-vindas ao Gnosis".to_string(),
+            active_note_icon: String::new(),
             active_note_content: "# Bem-vindo ao Gnosis\n\nRecompilação de alto desempenho do Obsidian em Rust puro.".to_string(),
             sidebar_collapsed: false,
             sync_status: "Sincronizado (Local)".to_string(),
@@ -69,10 +73,22 @@ impl AppState {
         }
     }
 
-    /// Seleciona uma nota para exibição ativa e calcula métricas.
+    /// Seleciona uma nota para exibição ativa, extrai metadados e calcula métricas.
     pub fn select_note(&mut self, path: &str, content: &str) {
         self.active_note_path = Some(path.to_string());
         self.active_note_content = content.to_string();
+
+        let (fm_opt, _) = gnosis_markdown::parse_frontmatter(content);
+        if let Some(fm) = fm_opt {
+            if let Some(ic) = fm.visual_icon() {
+                self.active_note_icon = ic.to_string();
+                self.set_entry_icon(path, Some(ic.to_string()));
+            } else {
+                self.active_note_icon = self.entry_icon(path).unwrap_or_default().to_string();
+            }
+        } else {
+            self.active_note_icon = self.entry_icon(path).unwrap_or_default().to_string();
+        }
 
         // Extrai o nome da nota a partir do caminho
         let title = path
@@ -81,6 +97,21 @@ impl AppState {
             .unwrap_or(path)
             .trim_end_matches(".md");
         self.active_note_title = title.to_string();
+    }
+
+    /// Define ou atualiza o ícone de uma entrada no catálogo da árvore.
+    pub fn set_entry_icon(&mut self, path: &str, icon: Option<String>) {
+        if let Some(entry) = self.entries.iter_mut().find(|e| e.path == path) {
+            entry.icon = icon;
+        }
+    }
+
+    /// Retorna o ícone associado a uma entrada no catálogo, se houver.
+    pub fn entry_icon(&self, path: &str) -> Option<&str> {
+        self.entries
+            .iter()
+            .find(|e| e.path == path)
+            .and_then(|e| e.icon.as_deref())
     }
 
     /// Adiciona um arquivo ou pasta ao catálogo da árvore.
@@ -124,6 +155,7 @@ impl AppState {
                         path: curr_folder.clone(),
                         is_folder: true,
                         parent_path: parent,
+                        icon: None,
                     });
                 }
             }
@@ -142,6 +174,7 @@ impl AppState {
                 path: path_str.to_string(),
                 is_folder: false,
                 parent_path,
+                icon: None,
             });
         }
     }
@@ -184,6 +217,7 @@ impl AppState {
                     is_expanded,
                     indent_level: level,
                     is_active,
+                    icon: child.icon.clone().unwrap_or_default(),
                 });
 
                 // Se for pasta e estiver expandida, visita os filhos recursivamente
@@ -196,6 +230,7 @@ impl AppState {
         visit(self, None, 0, &mut result);
         result
     }
+
 
     /// Contagem precisa de palavras do conteúdo ativo.
     pub fn word_count(&self) -> usize {
@@ -271,4 +306,24 @@ mod tests {
             assert_eq!(node.path, "Projetos/Rust/Gnosis.md");
         }
     }
+
+    #[test]
+    fn test_state_note_icon_and_stickers() {
+        let mut state = AppState::new("Vault", "/vault");
+        state.populate_from_paths(vec!["Notas/Rust.md"]);
+
+        let note_content = "---\nicon: 🦀\nsticker: ferris.svg\n---\n# Rust Lang";
+        state.select_note("Notas/Rust.md", note_content);
+
+        assert_eq!(state.active_note_icon, "🦀");
+        assert_eq!(state.active_note_title, "Rust");
+
+        let visible = state.visible_tree_items();
+        let rust_item = visible.iter().find(|i| i.path == "Notas/Rust.md" || i.name == "Rust");
+        assert!(rust_item.is_some());
+        if let Some(item) = rust_item {
+            assert_eq!(item.icon, "🦀");
+        }
+    }
 }
+

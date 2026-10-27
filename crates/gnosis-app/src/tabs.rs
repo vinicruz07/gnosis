@@ -12,6 +12,7 @@ pub struct TabItem {
     pub is_modified: bool,
     pub cursor_position: usize,
     pub scroll_offset: f32,
+    pub icon: Option<String>,
 }
 
 impl TabItem {
@@ -26,9 +27,17 @@ impl TabItem {
             is_modified: false,
             cursor_position: 0,
             scroll_offset: 0.0,
+            icon: None,
         }
     }
+
+    /// Anexa um ícone ou sticker personalizado à aba.
+    pub fn with_icon(mut self, icon: Option<impl Into<String>>) -> Self {
+        self.icon = icon.map(|i| i.into());
+        self
+    }
 }
+
 
 /// Modo de divisão de tela entre painéis.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
@@ -66,18 +75,27 @@ impl EditorPane {
         self.tabs.get_mut(self.active_tab_index)
     }
 
-    /// Abre uma nota no painel. Se já estiver aberta, apenas a ativa.
-    pub fn open_tab(&mut self, path: &str, title: &str) -> usize {
+    /// Abre uma nota no painel com ícone opcional. Se já estiver aberta, atualiza o ícone e ativa.
+    pub fn open_tab_with_icon(&mut self, path: &str, title: &str, icon: Option<String>) -> usize {
         if let Some(pos) = self.tabs.iter().position(|t| t.path == path) {
+            if icon.is_some() {
+                self.tabs[pos].icon = icon;
+            }
             self.active_tab_index = pos;
             return pos;
         }
 
-        let new_tab = TabItem::new(path, title);
+        let new_tab = TabItem::new(path, title).with_icon(icon);
         self.tabs.push(new_tab);
         self.active_tab_index = self.tabs.len().saturating_sub(1);
         self.active_tab_index
     }
+
+    /// Abre uma nota no painel. Se já estiver aberta, apenas a ativa.
+    pub fn open_tab(&mut self, path: &str, title: &str) -> usize {
+        self.open_tab_with_icon(path, title, None)
+    }
+
 
     /// Fecha a aba no índice especificado e reajusta a aba ativa com segurança.
     pub fn close_tab(&mut self, index: usize) -> Option<TabItem> {
@@ -211,12 +229,18 @@ impl TabManager {
         &mut self.panes[self.active_pane_index]
     }
 
-    /// Abre uma nota no painel ativo e registra no histórico de navegação.
-    pub fn open_note(&mut self, path: &str, title: &str) {
+    /// Abre uma nota no painel ativo com ícone opcional e registra no histórico de navegação.
+    pub fn open_note_with_icon(&mut self, path: &str, title: &str, icon: Option<String>) {
         self.history.push(path);
         let pane = self.active_pane_mut();
-        pane.open_tab(path, title);
+        pane.open_tab_with_icon(path, title, icon);
     }
+
+    /// Abre uma nota no painel ativo e registra no histórico de navegação.
+    pub fn open_note(&mut self, path: &str, title: &str) {
+        self.open_note_with_icon(path, title, None);
+    }
+
 
     /// Fecha a aba ativa do painel ativo.
     pub fn close_active_tab(&mut self) -> Option<TabItem> {
@@ -387,4 +411,18 @@ mod tests {
         // As abas devem ter sido consolidadas
         assert!(manager.panes[0].tabs.iter().any(|t| t.title == "B"));
     }
+
+    #[test]
+    fn test_tab_with_sticker_icon() {
+        let mut manager = TabManager::new();
+        manager.open_note_with_icon("Doc.md", "Documentação", Some("📚".to_string()));
+
+        let active = manager.active_pane().active_tab();
+        assert!(active.is_some());
+        if let Some(tab) = active {
+            assert_eq!(tab.title, "Documentação");
+            assert_eq!(tab.icon.as_deref(), Some("📚"));
+        }
+    }
 }
+

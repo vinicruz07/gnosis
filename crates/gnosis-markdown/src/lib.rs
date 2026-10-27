@@ -21,7 +21,7 @@ pub mod wikilink;
 pub use ast::{CalloutKind, MarkdownBlock, MarkdownDoc, TaskItem};
 pub use block_parser::{parse_blocks, parse_document};
 pub use error::{MarkdownError, Result};
-pub use frontmatter::{parse_frontmatter, Frontmatter};
+pub use frontmatter::{parse_frontmatter, update_frontmatter_stickers, Frontmatter};
 pub use parser::ParsedMetadata;
 pub use tag::scan_tags;
 pub use wikilink::{scan_wikilinks, WikiLink};
