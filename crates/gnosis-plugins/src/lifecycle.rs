@@ -6,6 +6,7 @@
 use crate::error::Result;
 use crate::events::{EventBus, PluginEvent};
 use crate::manifest::{PluginManifest, PluginPermission};
+use crate::ui::UiRegistry;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -40,15 +41,36 @@ pub struct PluginContext {
     pub plugin_id: String,
     pub event_bus: Arc<EventBus>,
     pub permissions: Vec<PluginPermission>,
+    pub ui_registry: Arc<UiRegistry>,
 }
 
 impl PluginContext {
-    /// Cria um novo contexto para o plugin fornecido.
-    pub fn new(plugin_id: impl Into<String>, event_bus: Arc<EventBus>, permissions: Vec<PluginPermission>) -> Self {
+    /// Cria um novo contexto para o plugin fornecido com registro de UI integrado.
+    pub fn new(
+        plugin_id: impl Into<String>,
+        event_bus: Arc<EventBus>,
+        permissions: Vec<PluginPermission>,
+        ui_registry: Arc<UiRegistry>,
+    ) -> Self {
         Self {
             plugin_id: plugin_id.into(),
             event_bus,
             permissions,
+            ui_registry,
+        }
+    }
+
+    /// Cria um contexto com registro de UI padrão em memória (útil para testes isolados).
+    pub fn new_isolated(
+        plugin_id: impl Into<String>,
+        event_bus: Arc<EventBus>,
+        permissions: Vec<PluginPermission>,
+    ) -> Self {
+        Self {
+            plugin_id: plugin_id.into(),
+            event_bus,
+            permissions,
+            ui_registry: Arc::new(UiRegistry::new()),
         }
     }
 
@@ -133,7 +155,7 @@ mod tests {
         assert!(!plugin.loaded);
 
         let bus = Arc::new(EventBus::new(16));
-        let ctx = PluginContext::new("mock-test", bus, vec![PluginPermission::ReadNotes]);
+        let ctx = PluginContext::new_isolated("mock-test", bus, vec![PluginPermission::ReadNotes]);
 
         plugin.on_load(&ctx).await?;
         assert!(plugin.loaded);

@@ -13,6 +13,7 @@ pub mod lifecycle;
 pub mod manager;
 pub mod manifest;
 pub mod sandbox;
+pub mod ui;
 
 pub use error::{PluginError, Result};
 pub use events::{EventBus, EventType, PluginEvent};
@@ -20,3 +21,6 @@ pub use lifecycle::{MockPlugin, Plugin, PluginContext, PluginState};
 pub use manager::PluginManager;
 pub use manifest::{PluginManifest, PluginPermission};
 pub use sandbox::{PluginSandbox, PluginSandboxConfig, SandboxFileSystem};
+pub use ui::{
+    StatusBarAlignment, StatusBarItem, ToolbarItem, UiCommand, UiRegistry, WordCounterDemoPlugin,
+};

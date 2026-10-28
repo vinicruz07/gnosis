@@ -8,6 +8,7 @@ use crate::error::{PluginError, Result};
 use crate::events::{EventBus, PluginEvent};
 use crate::lifecycle::{Plugin, PluginContext, PluginState};
 use crate::manifest::PluginManifest;
+use crate::ui::UiRegistry;
 use gnosis_core::path::VaultPath;
 use gnosis_core::vfs::FileSystemProvider;
 use std::collections::HashMap;
@@ -18,6 +19,7 @@ use tokio::sync::{Mutex, RwLock};
 #[derive(Clone)]
 pub struct PluginManager {
     event_bus: Arc<EventBus>,
+    ui_registry: Arc<UiRegistry>,
     manifests: Arc<RwLock<HashMap<String, PluginManifest>>>,
     instances: Arc<RwLock<HashMap<String, Arc<Mutex<Box<dyn Plugin>>>>>>,
     states: Arc<RwLock<HashMap<String, PluginState>>>,
@@ -28,6 +30,18 @@ impl PluginManager {
     pub fn new(event_bus: Arc<EventBus>) -> Self {
         Self {
             event_bus,
+            ui_registry: Arc::new(UiRegistry::new()),
+            manifests: Arc::new(RwLock::new(HashMap::new())),
+            instances: Arc::new(RwLock::new(HashMap::new())),
+            states: Arc::new(RwLock::new(HashMap::new())),
+        }
+    }
+
+    /// Inicializa um novo gerenciador com registro de interface gráfica injetado.
+    pub fn with_ui_registry(event_bus: Arc<EventBus>, ui_registry: Arc<UiRegistry>) -> Self {
+        Self {
+            event_bus,
+            ui_registry,
             manifests: Arc::new(RwLock::new(HashMap::new())),
             instances: Arc::new(RwLock::new(HashMap::new())),
             states: Arc::new(RwLock::new(HashMap::new())),
@@ -37,6 +51,11 @@ impl PluginManager {
     /// Retorna uma referência ao barramento de eventos compartilhado.
     pub fn event_bus(&self) -> &Arc<EventBus> {
         &self.event_bus
+    }
+
+    /// Retorna uma referência ao registro de extensões da interface gráfica.
+    pub fn ui_registry(&self) -> &Arc<UiRegistry> {
+        &self.ui_registry
     }
 
     /// Registra uma nova instância de plugin no gerenciador em estado `Unloaded`.
@@ -80,7 +99,12 @@ impl PluginManager {
             instances.get(plugin_id).cloned().ok_or_else(|| PluginError::PluginNotFound(plugin_id.to_string()))?
         };
 
-        let context = PluginContext::new(plugin_id, self.event_bus.clone(), manifest.permissions.clone());
+        let context = PluginContext::new(
+            plugin_id,
+            self.event_bus.clone(),
+            manifest.permissions.clone(),
+            self.ui_registry.clone(),
+        );
 
         let mut instance = instance_arc.lock().await;
         match instance.on_load(&context).await {
@@ -119,6 +143,7 @@ impl PluginManager {
                 let mut states = self.states.write().await;
                 let _ = states.insert(plugin_id.to_string(), PluginState::Unloaded);
                 self.event_bus.unsubscribe_plugin(plugin_id).await;
+                self.ui_registry.unregister_all_for_plugin(plugin_id).await;
                 Ok(())
             }
             Err(e) => {

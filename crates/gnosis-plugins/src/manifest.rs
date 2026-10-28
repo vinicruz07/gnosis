@@ -90,6 +90,12 @@ impl PluginManifest {
         }
     }
 
+    /// Define as permissões requeridas pelo plugin (padrão builder).
+    pub fn with_permissions(mut self, permissions: Vec<PluginPermission>) -> Self {
+        self.permissions = permissions;
+        self
+    }
+
     /// Analisa e desserializa o manifesto a partir de uma string JSON, validando seus campos.
     pub fn from_json_str(json_str: &str) -> Result<Self> {
         let manifest: Self = serde_json::from_str(json_str)
