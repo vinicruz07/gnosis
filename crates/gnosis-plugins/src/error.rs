@@ -1,4 +1,4 @@
-//! Gestão de erros tipados do subsistema de plugins.
+//! Gestão de erros tipados do subsistema de plugins e sandbox.
 //!
 //! Em conformidade com as diretrizes do Gnosis:
 //! - 100% Rust Seguro (`#![forbid(unsafe_code)]`).
@@ -35,6 +35,18 @@ pub enum PluginError {
 
     #[error("Permissão '{0}' requerida pelo plugin '{1}' não foi concedida")]
     PermissionDenied(String, String),
+
+    #[error("Tempo limite de execução excedido na sandbox ({0}ms)")]
+    ExecutionTimeout(u64),
+
+    #[error("Pânico interceptado e contido com sucesso na sandbox: {0}")]
+    PanicIntercepted(String),
+
+    #[error("Limite de memória da sandbox excedido: {0} bytes alocados, máximo de {1} bytes")]
+    MemoryLimitExceeded(usize, usize),
+
+    #[error("Violação de isolamento de sistema de arquivos na sandbox: {0}")]
+    SandboxViolation(String),
 
     #[error("Erro de I/O no sistema de arquivos ao acessar plugin: {0}")]
     Io(String),
