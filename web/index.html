@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Gnosis — Segundo Cérebro Local & Soberano (PWA)</title>
+  <meta name="description" content="Segundo cérebro pessoal, gestão de conhecimento local, seguro e offline-first com grafo 2D e plugins.">
+  <meta name="theme-color" content="#8957e5">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Gnosis">
+  
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="icon" type="image/svg+xml" href="./icons/icon-192.svg">
+  <link rel="apple-touch-icon" href="./icons/icon-192.svg">
+  
+  <!-- Tipografia Moderna -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  
+  <link rel="stylesheet" href="./app.css">
+</head>
+<body data-theme="Abyss">
+  <div id="app-root">
+    
+    <!-- Header Superior -->
+    <header class="top-header">
+      <div class="brand-section">
+        <img src="./icons/icon-192.svg" alt="Gnosis Logo" class="brand-icon">
+        <h1 class="brand-title">GNOSIS</h1>
+        <span class="badge-offline" id="badge-offline-status">100% Offline (Modo Avião)</span>
+      </div>
+
+      <div class="header-actions">
+        <button id="btn-quick-switcher" class="btn" title="Buscar Nota ou Comando (Ctrl+O)">
+          🔍 Quick Switcher <kbd style="font-size:10px; opacity:0.7;">Ctrl+O</kbd>
+        </button>
+        <button id="btn-theme" class="btn btn-icon" title="Alternar Tema Místico">
+          🎨 Abyss
+        </button>
+        <button id="btn-install" class="btn btn-primary" style="display:none;" title="Instalar aplicativo localmente">
+          ⬇️ Instalar App
+        </button>
+      </div>
+    </header>
+
+    <!-- Workspace -->
+    <div class="workspace-container">
+      
+      <!-- Sidebar Lateral -->
+      <aside class="sidebar" id="sidebar-panel">
+        <div class="sidebar-header">
+          <span class="sidebar-title">Vault Local (VFS Web)</span>
+          <button id="btn-new-note" class="btn btn-icon" title="Nova Nota">+ Nota</button>
+        </div>
+        <ul class="note-list" id="note-list">
+          <!-- Injetado dinamicamente pelo app.js -->
+        </ul>
+      </aside>
+
+      <!-- Área de Conteúdo Principal -->
+      <main class="main-content">
+        
+        <!-- Abas -->
+        <nav class="tabs-bar" aria-label="Navegação de Modos">
+          <button class="tab active" id="tab-editor">📝 Editor Markdown</button>
+          <button class="tab" id="tab-graph">🕸️ Grafo de Conhecimento</button>
+        </nav>
+
+        <!-- Wrapper dos Painéis -->
+        <div class="editor-wrapper">
+          
+          <!-- Painel do Editor -->
+          <section class="editor-pane" id="editor-pane">
+            <input type="text" id="note-title-input" class="note-title-input" placeholder="Título da Nota..." aria-label="Título da Nota">
+            <textarea id="markdown-editor" class="markdown-editor" placeholder="Escreva suas ideias aqui em Markdown..." aria-label="Editor de Texto Markdown"></textarea>
+          </section>
+
+          <!-- Painel do Grafo 2D -->
+          <section class="graph-pane" id="graph-pane">
+            <canvas id="graph-canvas"></canvas>
+            <div class="graph-overlay-controls">
+              <span style="font-size:11px; color:var(--text-muted); display:flex; align-items:center; gap:6px;">
+                ⚡ Física 2D em 60 FPS
+              </span>
+            </div>
+          </section>
+
+        </div>
+
+      </main>
+
+    </div>
+
+    <!-- Barra de Status Inferior -->
+    <footer class="status-bar">
+      <div class="status-group">
+        <span class="status-item" id="status-storage">💾 VFS: IndexedDB / OPFS Local</span>
+        <span class="status-item" id="status-plugin">📊 Contador Ativo: 0 pal.</span>
+      </div>
+      <div class="status-group">
+        <span class="status-item" id="status-words">0 palavras</span>
+        <span class="status-item" id="status-chars">0 caracteres</span>
+        <span class="status-item" style="color:var(--accent-emerald);">● Soberano</span>
+      </div>
+    </footer>
+
+  </div>
+
+  <!-- Modal Quick Switcher (Ctrl+O) -->
+  <div class="modal-overlay" id="quick-switcher-modal" role="dialog" aria-modal="true" aria-label="Paleta de Comandos e Quick Switcher">
+    <div class="quick-switcher-card">
+      <div class="qs-search-header">
+        <span>🔍</span>
+        <input type="text" id="qs-input" class="qs-input" placeholder="Digite o nome de uma nota ou comando..." autocomplete="off">
+        <kbd style="font-size:11px; color:var(--text-muted); border:1px solid var(--border-subtle); padding:2px 5px; border-radius:4px;">ESC</kbd>
+      </div>
+      <ul class="qs-results" id="qs-results">
+        <!-- Injetado dinamicamente -->
+      </ul>
+    </div>
+  </div>
+
+  <script src="./app.js"></script>
+</body>
+</html>

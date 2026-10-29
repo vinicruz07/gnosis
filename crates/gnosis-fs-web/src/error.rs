@@ -37,6 +37,9 @@ pub enum WebFsError {
     #[error("Falha de serialização/deserialização do armazenamento web: {0}")]
     Serialization(String),
 
+    #[error("Dados corrompidos ou inválidos no payload web: {0}")]
+    CorruptedPayload(String),
+
     #[error("Erro de I/O na camada web: {0}")]
     Io(String),
 }
@@ -50,6 +53,7 @@ impl From<WebFsError> for CoreError {
             WebFsError::IsDirectory(p) => CoreError::IsDirectory(p),
             WebFsError::NotDirectory(p) => CoreError::NotDirectory(p),
             WebFsError::Serialization(s) => CoreError::Serialization(s),
+            WebFsError::CorruptedPayload(s) => CoreError::Serialization(s),
             WebFsError::Opfs(s) => CoreError::Io(format!("OPFS: {}", s)),
             WebFsError::IndexedDb(s) => CoreError::Io(format!("IndexedDB: {}", s)),
             WebFsError::Io(s) => CoreError::Io(s),

@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 192 192" width="192" height="192">
+  <defs>
+    <linearGradient id="bg-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1a102f"/>
+      <stop offset="50%" stop-color="#0f172a"/>
+      <stop offset="100%" stop-color="#080b12"/>
+    </linearGradient>
+    <linearGradient id="glyph-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#c084fc"/>
+      <stop offset="50%" stop-color="#818cf8"/>
+      <stop offset="100%" stop-color="#38bdf8"/>
+    </linearGradient>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="6" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+  </defs>
+  
+  <!-- Fundo Circular com borda sutil -->
+  <rect width="192" height="192" rx="40" fill="url(#bg-grad)"/>
+  <rect x="2" y="2" width="188" height="188" rx="38" fill="none" stroke="url(#glyph-grad)" stroke-width="2" stroke-opacity="0.3"/>
+
+  <!-- Hexágono Externo Místico -->
+  <polygon points="96,32 144,60 144,116 96,144 48,116 48,60" fill="none" stroke="url(#glyph-grad)" stroke-width="4" stroke-linejoin="round" filter="url(#glow)"/>
+  
+  <!-- Círculos e Conexões de Grafo Internas -->
+  <line x1="96" y1="32" x2="96" y2="88" stroke="#38bdf8" stroke-width="2.5" stroke-dasharray="4,3"/>
+  <line x1="48" y1="116" x2="96" y2="88" stroke="#818cf8" stroke-width="2.5"/>
+  <line x1="144" y1="116" x2="96" y2="88" stroke="#c084fc" stroke-width="2.5"/>
+
+  <!-- Nó Central Radiante (Gnosis Core) -->
+  <circle cx="96" cy="88" r="16" fill="#0d1117" stroke="url(#glyph-grad)" stroke-width="3"/>
+  <circle cx="96" cy="88" r="7" fill="#facc15" filter="url(#glow)"/>
+  
+  <!-- Nós Satélites -->
+  <circle cx="96" cy="32" r="5" fill="#38bdf8"/>
+  <circle cx="144" cy="60" r="5" fill="#818cf8"/>
+  <circle cx="144" cy="116" r="5" fill="#c084fc"/>
+  <circle cx="96" cy="144" r="5" fill="#38bdf8"/>
+  <circle cx="48" cy="116" r="5" fill="#818cf8"/>
+  <circle cx="48" cy="60" r="5" fill="#c084fc"/>
+
+  <!-- Letra G Estilizada no topo do centro -->
+  <path d="M96 156 L96 168 M88 162 L104 162" stroke="#f6c177" stroke-width="2" stroke-linecap="round"/>
+</svg>

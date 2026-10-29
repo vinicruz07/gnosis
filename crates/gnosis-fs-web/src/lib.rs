@@ -5,6 +5,8 @@
 
 pub mod error;
 pub mod provider;
+pub mod pwa;
 
 pub use error::{Result, WebFsError};
 pub use provider::{WebFileSystem, WebFsConfig, WebStorageType};
+pub use pwa::{PwaBundleValidator, PwaIcon, PwaManifest};
