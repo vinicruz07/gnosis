@@ -98,6 +98,9 @@ export component AppWindow inherits Window {
     callback math_clicked(int);
     callback math_applied(int, string);
     callback math_cancelled(int);
+    callback block_clicked(int);
+    callback block_applied(int, string);
+    callback block_cancelled(int);
 
     // Callbacks do Grafo 2D
     callback toggle_graph_view();
@@ -505,6 +508,9 @@ export component AppWindow inherits Window {
                                 math_clicked(idx) => { root.math_clicked(idx); }
                                 math_applied(idx, formula) => { root.math_applied(idx, formula); }
                                 math_cancelled(idx) => { root.math_cancelled(idx); }
+                                block_clicked(id) => { root.block_clicked(id); }
+                                block_applied(id, text) => { root.block_applied(id, text); }
+                                block_cancelled(id) => { root.block_cancelled(id); }
                             }
                         }
                     }

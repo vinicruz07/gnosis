@@ -949,6 +949,60 @@ fn main() {
         });
     }
 
+    // Callback: Clique em bloco Markdown no Live Preview (H1-H6, Parágrafo, Callout, etc.)
+    {
+        let app_weak = app_weak.clone();
+        let editor_arc = Arc::clone(&editor_arc);
+        app.on_block_clicked(move |id| {
+            if let Ok(mut ed) = editor_arc.lock() {
+                ed.start_editing_block(id as usize);
+                let ast = to_slint_ast_blocks(&ed.generate_render_blocks());
+                if let Some(w) = app_weak.upgrade() {
+                    w.set_ast_blocks(ModelRc::new(VecModel::from(ast)));
+                }
+            }
+        });
+    }
+
+    // Callback: Aplicação de edição in-place de bloco Markdown
+    {
+        let app_weak = app_weak.clone();
+        let editor_arc = Arc::clone(&editor_arc);
+        let state_arc = Arc::clone(&state_arc);
+
+        app.on_block_applied(move |id, new_text| {
+            if let Ok(mut ed) = editor_arc.lock() {
+                ed.apply_block_edit(id as usize, new_text.as_str());
+                let updated_content = ed.content();
+
+                if let Ok(mut st) = state_arc.lock() {
+                    st.active_note_content = updated_content.clone();
+                }
+
+                let ast = to_slint_ast_blocks(&ed.generate_render_blocks());
+                if let Some(w) = app_weak.upgrade() {
+                    w.set_active_note_content(updated_content.as_str().into());
+                    w.set_ast_blocks(ModelRc::new(VecModel::from(ast)));
+                }
+            }
+        });
+    }
+
+    // Callback: Cancelar edição de bloco Markdown
+    {
+        let app_weak = app_weak.clone();
+        let editor_arc = Arc::clone(&editor_arc);
+        app.on_block_cancelled(move |_id| {
+            if let Ok(mut ed) = editor_arc.lock() {
+                ed.cancel_editing_block();
+                let ast = to_slint_ast_blocks(&ed.generate_render_blocks());
+                if let Some(w) = app_weak.upgrade() {
+                    w.set_ast_blocks(ModelRc::new(VecModel::from(ast)));
+                }
+            }
+        });
+    }
+
     // Callback: Alternar barra lateral
     {
         let app_weak = app_weak.clone();
