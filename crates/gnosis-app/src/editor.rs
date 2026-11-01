@@ -762,4 +762,70 @@ fn main() { println!("Gnosis"); }
         assert_eq!(controller.active_editing_block_id, Some(1));
         assert_eq!(controller.generate_render_blocks().len(), 3);
     }
+
+    #[test]
+    fn test_live_preview_multiple_cycles_frontmatter_and_latency_benchmark() {
+        use std::time::Instant;
+
+        let markdown = r#"---
+title: Teoria do Conhecimento
+tags: [epistemologia, filosofia, gnosis]
+author: Antigravity
+rating: 5
+---
+# Introdução à Gnose
+O conhecimento direto e intuitivo da realidade.
+
+> [!NOTE]
+> Epistemologia sem dogmas.
+
+- [ ] Ler Kant e Crítica da Razão Pura
+- [x] Ler Espinosa e a Ética
+
+```rust
+fn buscar_gnosis() -> bool {
+    true
+}
+```
+
+$$\sum_{i=0}^n x_i = C$$
+"#;
+
+        let mut controller = EditorController::new("Epistemologia.md", markdown);
+        let initial_blocks = controller.generate_render_blocks();
+        assert!(!initial_blocks.is_empty());
+
+        // Mede a latência de 100 ciclos de edição cirúrgica em blocos variados
+        let start = Instant::now();
+        let cycles = 100;
+
+        for i in 0..cycles {
+            // Edita o parágrafo (bloco 1)
+            controller.start_editing_block(1);
+            let new_text = format!("O conhecimento iterado {} vezes com precisão atômica.", i);
+            controller.apply_block_edit(1, &new_text);
+
+            // Alterna a tarefa (bloco 3)
+            controller.toggle_task_checkbox(3);
+
+            // Re-gera os blocos
+            let blocks = controller.generate_render_blocks();
+            assert!(!blocks.is_empty());
+        }
+
+        let elapsed = start.elapsed();
+        let avg_latency_us = elapsed.as_micros() / (cycles as u128);
+        // Cada ciclo (editar + toggle + reparse AST) deve levar menos de 2 milissegundos (2000 microssegundos)
+        assert!(avg_latency_us < 2000, "Latência média de ciclo muito alta: {}µs", avg_latency_us);
+
+        // Verifica integridade irrestrita do Frontmatter e do documento
+        let final_content = controller.content();
+        assert!(final_content.contains("title: Teoria do Conhecimento"));
+        assert!(final_content.contains("tags: [epistemologia, filosofia, gnosis]"));
+        assert!(final_content.contains("author: Antigravity"));
+        assert!(final_content.contains("# Introdução à Gnose"));
+        assert!(final_content.contains("O conhecimento iterado 99 vezes com precisão atômica."));
+        assert!(final_content.contains("fn buscar_gnosis()"));
+        assert!(final_content.contains(r"\sum_{i=0}^n"));
+    }
 }

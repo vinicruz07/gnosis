@@ -24,6 +24,7 @@ export component RichViewer inherits Rectangle {
     callback block_backspace_pressed(int);
     callback block_navigate_up(int, string);
     callback block_navigate_down(int, string);
+    callback add_block_at_end_requested();
 
     background: Theme.background;
 
@@ -35,8 +36,11 @@ export component RichViewer inherits Rectangle {
             spacing: 12px;
             alignment: start;
 
-            for block[idx] in root.blocks: Rectangle {
-                // Modo Edição In-Place para blocos textuais ativos (H1-H6, Parágrafo, Callout, Citação, Tarefas, Tabelas, Código)
+            for block[idx] in root.blocks: VerticalLayout {
+                spacing: 0px;
+                padding: 0px;
+
+                // Modo Edição In-Place para qualquer bloco textual ativo
                 if (block.is_editing && block.kind != "math"): Rectangle {
                     background: Theme.surface;
                     border-radius: 6px;
@@ -56,7 +60,7 @@ export component RichViewer inherits Rectangle {
                             wrap: word-wrap;
 
                             accepted => {
-                                root.block_enter_pressed(block.id, self.text);
+                                root.block_applied(block.id, self.text);
                             }
                         }
 
@@ -69,13 +73,13 @@ export component RichViewer inherits Rectangle {
 
                                 // Botão Navegar Bloco Anterior (↑)
                                 Rectangle {
-                                    height: 22px;
+                                    height: 24px;
                                     border-radius: 4px;
                                     background: touch_bprev.has-hover ? Theme.surface_hover : transparent;
 
                                     HorizontalLayout {
-                                        padding-left: 6px;
-                                        padding-right: 6px;
+                                        padding-left: 8px;
+                                        padding-right: 8px;
                                         alignment: center;
                                         Text {
                                             text: "↑ Anterior";
@@ -86,19 +90,20 @@ export component RichViewer inherits Rectangle {
                                     }
 
                                     touch_bprev := TouchArea {
+                                        mouse-cursor: pointer;
                                         clicked => { root.block_navigate_up(block.id, block_input.text); }
                                     }
                                 }
 
                                 // Botão Navegar Próximo Bloco (↓)
                                 Rectangle {
-                                    height: 22px;
+                                    height: 24px;
                                     border-radius: 4px;
                                     background: touch_bnext.has-hover ? Theme.surface_hover : transparent;
 
                                     HorizontalLayout {
-                                        padding-left: 6px;
-                                        padding-right: 6px;
+                                        padding-left: 8px;
+                                        padding-right: 8px;
                                         alignment: center;
                                         Text {
                                             text: "↓ Próximo";
@@ -109,42 +114,45 @@ export component RichViewer inherits Rectangle {
                                     }
 
                                     touch_bnext := TouchArea {
+                                        mouse-cursor: pointer;
                                         clicked => { root.block_navigate_down(block.id, block_input.text); }
                                     }
                                 }
 
                                 // Botão Novo Bloco Abaixo (Enter)
                                 Rectangle {
-                                    height: 22px;
+                                    height: 24px;
                                     border-radius: 4px;
                                     background: touch_benter.has-hover ? Theme.surface_hover : transparent;
 
                                     HorizontalLayout {
-                                        padding-left: 6px;
-                                        padding-right: 6px;
+                                        padding-left: 8px;
+                                        padding-right: 8px;
                                         alignment: center;
                                         Text {
                                             text: "↵ Novo Bloco";
                                             color: Theme.accent;
                                             font-size: 11px;
+                                            font-weight: 600;
                                             vertical-alignment: center;
                                         }
                                     }
 
                                     touch_benter := TouchArea {
+                                        mouse-cursor: pointer;
                                         clicked => { root.block_enter_pressed(block.id, block_input.text); }
                                     }
                                 }
 
-                                // Botão Unir / Deletar Bloco Vazio (Backspace)
+                                // Botão Deletar / Unir Bloco Vazio (Backspace)
                                 Rectangle {
-                                    height: 22px;
+                                    height: 24px;
                                     border-radius: 4px;
                                     background: touch_bdel.has-hover ? #450a0a : transparent;
 
                                     HorizontalLayout {
-                                        padding-left: 6px;
-                                        padding-right: 6px;
+                                        padding-left: 8px;
+                                        padding-right: 8px;
                                         alignment: center;
                                         Text {
                                             text: "⌫ Deletar / Unir";
@@ -155,6 +163,7 @@ export component RichViewer inherits Rectangle {
                                     }
 
                                     touch_bdel := TouchArea {
+                                        mouse-cursor: pointer;
                                         clicked => { root.block_backspace_pressed(block.id); }
                                     }
                                 }
@@ -166,7 +175,7 @@ export component RichViewer inherits Rectangle {
 
                                 // Botão Cancelar
                                 Rectangle {
-                                    height: 22px;
+                                    height: 24px;
                                     border-radius: 4px;
                                     background: touch_bcanc.has-hover ? Theme.surface_hover : transparent;
 
@@ -184,13 +193,14 @@ export component RichViewer inherits Rectangle {
                                     }
 
                                     touch_bcanc := TouchArea {
+                                        mouse-cursor: pointer;
                                         clicked => { root.block_cancelled(block.id); }
                                     }
                                 }
 
                                 // Botão Concluir / Aplicar (✓)
                                 Rectangle {
-                                    height: 22px;
+                                    height: 24px;
                                     border-radius: 4px;
                                     background: Theme.accent;
 
@@ -209,6 +219,7 @@ export component RichViewer inherits Rectangle {
                                     }
 
                                     TouchArea {
+                                        mouse-cursor: pointer;
                                         clicked => { root.block_applied(block.id, block_input.text); }
                                     }
                                 }
@@ -218,223 +229,225 @@ export component RichViewer inherits Rectangle {
                 }
 
                 // H1 em repouso
-                if (!block.is_editing && block.kind == "h1"): Rectangle {
-                    background: touch_h1.has-hover ? Theme.surface_hover : transparent;
-                    border-radius: 4px;
+                if (!block.is_editing && block.kind == "h1"): touch_h1 := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { root.block_clicked(block.id); }
 
-                    VerticalLayout {
-                        padding: 4px;
-                        spacing: 4px;
-                        Text {
-                            text: block.text;
-                            color: Theme.text_primary;
-                            font-size: 24px;
-                            font-weight: 700;
-                            wrap: word-wrap;
-                        }
-                        Rectangle {
-                            height: 1px;
-                            background: Theme.border;
-                        }
-                    }
+                    Rectangle {
+                        background: touch_h1.has-hover ? Theme.surface_hover : transparent;
+                        border-radius: 4px;
 
-                    touch_h1 := TouchArea {
-                        clicked => { root.block_clicked(block.id); }
+                        VerticalLayout {
+                            padding: 4px;
+                            spacing: 4px;
+                            Text {
+                                text: block.text;
+                                color: Theme.text_primary;
+                                font-size: 24px;
+                                font-weight: 700;
+                                wrap: word-wrap;
+                            }
+                            Rectangle {
+                                height: 1px;
+                                background: Theme.border;
+                            }
+                        }
                     }
                 }
 
                 // H2 em repouso
-                if (!block.is_editing && block.kind == "h2"): Rectangle {
-                    background: touch_h2.has-hover ? Theme.surface_hover : transparent;
-                    border-radius: 4px;
+                if (!block.is_editing && block.kind == "h2"): touch_h2 := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { root.block_clicked(block.id); }
 
-                    HorizontalLayout {
-                        padding: 4px;
-                        Text {
-                            text: block.text;
-                            color: Theme.text_primary;
-                            font-size: 19px;
-                            font-weight: 600;
-                            wrap: word-wrap;
+                    Rectangle {
+                        background: touch_h2.has-hover ? Theme.surface_hover : transparent;
+                        border-radius: 4px;
+
+                        HorizontalLayout {
+                            padding: 4px;
+                            Text {
+                                text: block.text;
+                                color: Theme.text_primary;
+                                font-size: 19px;
+                                font-weight: 600;
+                                wrap: word-wrap;
+                            }
                         }
-                    }
-
-                    touch_h2 := TouchArea {
-                        clicked => { root.block_clicked(block.id); }
                     }
                 }
 
                 // H3 em repouso
-                if (!block.is_editing && block.kind == "h3"): Rectangle {
-                    background: touch_h3.has-hover ? Theme.surface_hover : transparent;
-                    border-radius: 4px;
+                if (!block.is_editing && block.kind == "h3"): touch_h3 := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { root.block_clicked(block.id); }
 
-                    HorizontalLayout {
-                        padding: 4px;
-                        Text {
-                            text: block.text;
-                            color: Theme.text_secondary;
-                            font-size: 16px;
-                            font-weight: 600;
-                            wrap: word-wrap;
+                    Rectangle {
+                        background: touch_h3.has-hover ? Theme.surface_hover : transparent;
+                        border-radius: 4px;
+
+                        HorizontalLayout {
+                            padding: 4px;
+                            Text {
+                                text: block.text;
+                                color: Theme.text_secondary;
+                                font-size: 16px;
+                                font-weight: 600;
+                                wrap: word-wrap;
+                            }
                         }
-                    }
-
-                    touch_h3 := TouchArea {
-                        clicked => { root.block_clicked(block.id); }
                     }
                 }
 
                 // H4, H5, H6 em repouso
-                if (!block.is_editing && (block.kind == "h4" || block.kind == "h5" || block.kind == "h6")): Rectangle {
-                    background: touch_hx.has-hover ? Theme.surface_hover : transparent;
-                    border-radius: 4px;
+                if (!block.is_editing && (block.kind == "h4" || block.kind == "h5" || block.kind == "h6")): touch_hx := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { root.block_clicked(block.id); }
 
-                    HorizontalLayout {
-                        padding: 4px;
-                        Text {
-                            text: block.text;
-                            color: Theme.text_secondary;
-                            font-size: 14px;
-                            font-weight: 600;
-                            wrap: word-wrap;
+                    Rectangle {
+                        background: touch_hx.has-hover ? Theme.surface_hover : transparent;
+                        border-radius: 4px;
+
+                        HorizontalLayout {
+                            padding: 4px;
+                            Text {
+                                text: block.text;
+                                color: Theme.text_secondary;
+                                font-size: 14px;
+                                font-weight: 600;
+                                wrap: word-wrap;
+                            }
                         }
-                    }
-
-                    touch_hx := TouchArea {
-                        clicked => { root.block_clicked(block.id); }
                     }
                 }
 
                 // Parágrafo Normal em repouso
-                if (!block.is_editing && block.kind == "paragraph"): Rectangle {
-                    background: touch_p.has-hover ? Theme.surface_hover : transparent;
-                    border-radius: 4px;
+                if (!block.is_editing && block.kind == "paragraph"): touch_p := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { root.block_clicked(block.id); }
 
-                    HorizontalLayout {
-                        padding: 4px;
-                        Text {
-                            text: block.text;
-                            color: Theme.text_secondary;
-                            font-size: 14px;
-                            wrap: word-wrap;
+                    Rectangle {
+                        background: touch_p.has-hover ? Theme.surface_hover : transparent;
+                        border-radius: 4px;
+
+                        HorizontalLayout {
+                            padding: 4px;
+                            Text {
+                                text: block.text;
+                                color: Theme.text_secondary;
+                                font-size: 14px;
+                                wrap: word-wrap;
+                            }
                         }
-                    }
-
-                    touch_p := TouchArea {
-                        clicked => { root.block_clicked(block.id); }
                     }
                 }
 
                 // Bloco de Código Estilizado em repouso
-                if (!block.is_editing && block.kind == "code"): Rectangle {
-                    background: touch_code.has-hover ? #181825 : #11111b;
-                    border-radius: 6px;
-                    border-width: 1px;
-                    border-color: touch_code.has-hover ? Theme.accent : Theme.border;
+                if (!block.is_editing && block.kind == "code"): touch_code := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { root.block_clicked(block.id); }
 
-                    VerticalLayout {
-                        padding: 10px;
-                        spacing: 6px;
+                    Rectangle {
+                        background: touch_code.has-hover ? #181825 : #11111b;
+                        border-radius: 6px;
+                        border-width: 1px;
+                        border-color: touch_code.has-hover ? Theme.accent : Theme.border;
 
-                        // Rótulo da Linguagem
-                        HorizontalLayout {
-                            alignment: space-between;
-                            Text {
-                                text: "💻 " + block.extra;
-                                color: Theme.accent;
-                                font-size: 10px;
-                                font-weight: 600;
+                        VerticalLayout {
+                            padding: 10px;
+                            spacing: 6px;
+
+                            HorizontalLayout {
+                                alignment: space-between;
+                                Text {
+                                    text: "💻 " + block.extra;
+                                    color: Theme.accent;
+                                    font-size: 10px;
+                                    font-weight: 600;
+                                }
+                                Text {
+                                    text: "Clique para editar";
+                                    color: Theme.text_muted;
+                                    font-size: 10px;
+                                }
                             }
+
                             Text {
-                                text: "Clique para editar";
-                                color: Theme.text_muted;
-                                font-size: 10px;
+                                text: block.text;
+                                color: #a6e3a1;
+                                font-size: 13px;
+                                wrap: word-wrap;
                             }
                         }
-
-                        // Código-fonte
-                        Text {
-                            text: block.text;
-                            color: #a6e3a1; // Verde suave para código
-                            font-size: 13px;
-                            wrap: word-wrap;
-                        }
-                    }
-
-                    touch_code := TouchArea {
-                        clicked => { root.block_clicked(block.id); }
                     }
                 }
 
                 // Callout do Obsidian ([!NOTE], [!TIP], etc.) em repouso
-                if (!block.is_editing && block.kind == "callout"): Rectangle {
-                    background: touch_callout.has-hover ? Theme.surface_hover : Theme.surface;
-                    border-radius: 6px;
-                    clip: true;
+                if (!block.is_editing && block.kind == "callout"): touch_callout := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { root.block_clicked(block.id); }
 
-                    // Barra de destaque vertical à esquerda
                     Rectangle {
-                        x: 0px;
-                        y: 0px;
-                        width: 4px;
-                        height: 100%;
-                        background: Theme.accent;
-                    }
+                        background: touch_callout.has-hover ? Theme.surface_hover : Theme.surface;
+                        border-radius: 6px;
+                        clip: true;
 
-                    VerticalLayout {
-                        padding: 10px;
-                        padding-left: 14px;
-                        spacing: 6px;
+                        Rectangle {
+                            x: 0px;
+                            y: 0px;
+                            width: 4px;
+                            height: 100%;
+                            background: Theme.accent;
+                        }
 
-                        // Título do Callout com Ícone
-                        HorizontalLayout {
+                        VerticalLayout {
+                            padding: 10px;
+                            padding-left: 14px;
                             spacing: 6px;
-                            alignment: start;
 
-                            Text {
-                                text: "💡";
-                                font-size: 13px;
-                                vertical-alignment: center;
+                            HorizontalLayout {
+                                spacing: 6px;
+                                alignment: start;
+
+                                Text {
+                                    text: "💡";
+                                    font-size: 13px;
+                                    vertical-alignment: center;
+                                }
+
+                                Text {
+                                    text: block.extra;
+                                    color: Theme.accent;
+                                    font-size: 13px;
+                                    font-weight: 600;
+                                    vertical-alignment: center;
+                                }
                             }
 
                             Text {
-                                text: block.extra;
-                                color: Theme.accent;
+                                text: block.text;
+                                color: Theme.text_secondary;
                                 font-size: 13px;
-                                font-weight: 600;
-                                vertical-alignment: center;
+                                wrap: word-wrap;
                             }
                         }
-
-                        // Conteúdo Interno
-                        Text {
-                            text: block.text;
-                            color: Theme.text_secondary;
-                            font-size: 13px;
-                            wrap: word-wrap;
-                        }
-                    }
-
-                    touch_callout := TouchArea {
-                        clicked => { root.block_clicked(block.id); }
                     }
                 }
 
                 // Tarefa com Checkbox Interativo em repouso
                 if (!block.is_editing && block.kind == "task"): Rectangle {
-                    height: 26px;
+                    height: 28px;
 
                     HorizontalLayout {
                         spacing: 8px;
                         alignment: start;
 
-                        // Caixa de seleção
+                        // Caixa de seleção clicável (alterna checkbox instantaneamente)
                         Rectangle {
                             width: 18px;
                             height: 18px;
                             border-radius: 4px;
-                            border-width: 1px;
+                            border-width: 1.5px;
                             border-color: block.is_checked ? Theme.accent : Theme.text_muted;
                             background: block.is_checked ? Theme.accent : transparent;
                             y: (parent.height - self.height) / 2;
@@ -449,103 +462,106 @@ export component RichViewer inherits Rectangle {
                             }
 
                             TouchArea {
+                                mouse-cursor: pointer;
                                 clicked => { root.task_toggled(block.id); }
                             }
                         }
 
-                        // Texto da Tarefa com clique para editar
-                        Rectangle {
+                        // Texto da Tarefa com clique para abrir editor in-place
+                        touch_task_txt := TouchArea {
                             horizontal-stretch: 1;
-                            background: touch_task_txt.has-hover ? Theme.surface_hover : transparent;
-                            border-radius: 4px;
+                            mouse-cursor: pointer;
+                            clicked => { root.block_clicked(block.id); }
 
-                            HorizontalLayout {
-                                padding-left: 6px;
-                                padding-right: 6px;
+                            Rectangle {
+                                background: touch_task_txt.has-hover ? Theme.surface_hover : transparent;
+                                border-radius: 4px;
 
-                                Text {
-                                    text: block.text;
-                                    color: block.is_checked ? Theme.text_muted : Theme.text_primary;
-                                    font-size: 13px;
-                                    vertical-alignment: center;
+                                HorizontalLayout {
+                                    padding-left: 6px;
+                                    padding-right: 6px;
+
+                                    Text {
+                                        text: block.text;
+                                        color: block.is_checked ? Theme.text_muted : Theme.text_primary;
+                                        font-size: 13px;
+                                        vertical-alignment: center;
+                                    }
                                 }
-                            }
-
-                            touch_task_txt := TouchArea {
-                                clicked => { root.block_clicked(block.id); }
                             }
                         }
                     }
                 }
 
                 // Citação (Blockquote) em repouso
-                if (!block.is_editing && block.kind == "quote"): Rectangle {
-                    background: touch_quote.has-hover ? Theme.surface_hover : Theme.surface;
-                    border-radius: 6px;
-                    clip: true;
+                if (!block.is_editing && block.kind == "quote"): touch_quote := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { root.block_clicked(block.id); }
 
-                    // Barra vertical da citação à esquerda
                     Rectangle {
-                        x: 0px;
-                        y: 0px;
-                        width: 3px;
-                        height: 100%;
-                        background: Theme.text_muted;
-                    }
+                        background: touch_quote.has-hover ? Theme.surface_hover : Theme.surface;
+                        border-radius: 6px;
+                        clip: true;
 
-                    VerticalLayout {
-                        padding: 8px;
-                        padding-left: 14px;
-                        Text {
-                            text: block.text;
-                            color: Theme.text_secondary;
-                            font-size: 13px;
-                            font-italic: true;
-                            wrap: word-wrap;
+                        Rectangle {
+                            x: 0px;
+                            y: 0px;
+                            width: 3px;
+                            height: 100%;
+                            background: Theme.text_muted;
                         }
-                    }
 
-                    touch_quote := TouchArea {
-                        clicked => { root.block_clicked(block.id); }
+                        VerticalLayout {
+                            padding: 8px;
+                            padding-left: 14px;
+                            Text {
+                                text: block.text;
+                                color: Theme.text_secondary;
+                                font-size: 13px;
+                                font-italic: true;
+                                wrap: word-wrap;
+                            }
+                        }
                     }
                 }
 
                 // Tabela Markdown em repouso
-                if (!block.is_editing && block.kind == "table"): Rectangle {
-                    background: touch_tbl.has-hover ? Theme.surface_hover : Theme.surface;
-                    border-radius: 6px;
-                    border-width: 1px;
-                    border-color: Theme.border;
+                if (!block.is_editing && block.kind == "table"): touch_tbl := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { root.block_clicked(block.id); }
 
-                    VerticalLayout {
-                        padding: 10px;
-                        spacing: 6px;
+                    Rectangle {
+                        background: touch_tbl.has-hover ? Theme.surface_hover : Theme.surface;
+                        border-radius: 6px;
+                        border-width: 1px;
+                        border-color: Theme.border;
 
-                        HorizontalLayout {
-                            alignment: space-between;
-                            Text {
-                                text: "📊 Tabela";
-                                color: Theme.accent;
-                                font-size: 11px;
-                                font-weight: 600;
+                        VerticalLayout {
+                            padding: 10px;
+                            spacing: 6px;
+
+                            HorizontalLayout {
+                                alignment: space-between;
+                                Text {
+                                    text: "📊 Tabela";
+                                    color: Theme.accent;
+                                    font-size: 11px;
+                                    font-weight: 600;
+                                }
+                                Text {
+                                    text: "Clique para editar";
+                                    color: Theme.text_muted;
+                                    font-size: 10px;
+                                }
                             }
+
                             Text {
-                                text: "Clique para editar";
-                                color: Theme.text_muted;
-                                font-size: 10px;
+                                text: block.text;
+                                color: Theme.text_primary;
+                                font-size: 13px;
+                                wrap: word-wrap;
                             }
                         }
-
-                        Text {
-                            text: block.text;
-                            color: Theme.text_primary;
-                            font-size: 13px;
-                            wrap: word-wrap;
-                        }
-                    }
-
-                    touch_tbl := TouchArea {
-                        clicked => { root.block_clicked(block.id); }
                     }
                 }
 
@@ -560,38 +576,7 @@ export component RichViewer inherits Rectangle {
                         padding: 12px;
                         spacing: 8px;
 
-                        // Cabeçalho de Controle e Status da Fórmula
-                        HorizontalLayout {
-                            alignment: space-between;
-
-                            HorizontalLayout {
-                                spacing: 6px;
-                                alignment: start;
-
-                                Text {
-                                    text: "📐";
-                                    font-size: 13px;
-                                    vertical-alignment: center;
-                                }
-
-                                Text {
-                                    text: block.is_editing_math ? "Editor de Equação (LaTeX / Typst)" : "Equação";
-                                    color: block.is_editing_math ? Theme.accent : Theme.text_muted;
-                                    font-size: 11px;
-                                    font-weight: 600;
-                                    vertical-alignment: center;
-                                }
-                            }
-
-                            if (!block.is_editing_math): Text {
-                                text: "Clique para editar";
-                                color: Theme.text_muted;
-                                font-size: 10px;
-                                vertical-alignment: center;
-                            }
-                        }
-
-                        // Modo 1: Repouso Gráfico estilo Word (Nítido, elegante, renderizado)
+                        // Modo 1: Repouso Gráfico estilo Word (Nítido, renderizado)
                         if (!block.is_editing_math): HorizontalLayout {
                             alignment: center;
                             padding-top: 6px;
@@ -607,7 +592,7 @@ export component RichViewer inherits Rectangle {
                             }
                         }
 
-                        // Modo 2: Edição Interativa estilo Word (TextInput com foco ao vivo e botões no mesmo escopo)
+                        // Modo 2: Edição Interativa estilo Word
                         if (block.is_editing_math): VerticalLayout {
                             spacing: 8px;
 
@@ -636,7 +621,6 @@ export component RichViewer inherits Rectangle {
                                 HorizontalLayout {
                                     spacing: 6px;
 
-                                    // Botão Cancelar
                                     Rectangle {
                                         height: 22px;
                                         border-radius: 4px;
@@ -656,11 +640,11 @@ export component RichViewer inherits Rectangle {
                                         }
 
                                         touch_mcanc := TouchArea {
+                                            mouse-cursor: pointer;
                                             clicked => { root.math_cancelled(idx); }
                                         }
                                     }
 
-                                    // Botão Aplicar (✓)
                                     Rectangle {
                                         height: 22px;
                                         border-radius: 4px;
@@ -681,6 +665,7 @@ export component RichViewer inherits Rectangle {
                                         }
 
                                         TouchArea {
+                                            mouse-cursor: pointer;
                                             clicked => { root.math_applied(idx, math_input.text); }
                                         }
                                     }
@@ -691,6 +676,7 @@ export component RichViewer inherits Rectangle {
 
                     // Se não estiver editando, TouchArea cobre todo o bloco para abrir no clique
                     if (!block.is_editing_math): TouchArea {
+                        mouse-cursor: pointer;
                         clicked => { root.math_clicked(idx); }
                     }
                 }
@@ -699,6 +685,32 @@ export component RichViewer inherits Rectangle {
                 if (block.kind == "divider"): Rectangle {
                     height: 1px;
                     background: Theme.border;
+                }
+            }
+
+            // Botão Adicionar Novo Bloco no final da nota
+            touch_add_bottom := TouchArea {
+                mouse-cursor: pointer;
+                clicked => { root.add_block_at_end_requested(); }
+
+                Rectangle {
+                    height: 38px;
+                    border-radius: 6px;
+                    border-width: 1px;
+                    border-color: touch_add_bottom.has-hover ? Theme.accent : Theme.border;
+                    background: touch_add_bottom.has-hover ? Theme.surface_hover : transparent;
+
+                    HorizontalLayout {
+                        alignment: center;
+                        spacing: 6px;
+
+                        Text {
+                            text: "➕ Clique aqui para escrever um novo parágrafo...";
+                            color: touch_add_bottom.has-hover ? Theme.accent : Theme.text_muted;
+                            font-size: 12px;
+                            vertical-alignment: center;
+                        }
+                    }
                 }
             }
         }

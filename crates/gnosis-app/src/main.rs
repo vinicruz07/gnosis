@@ -857,6 +857,7 @@ fn main() {
         let app_weak = app_weak.clone();
         let editor_arc = Arc::clone(&editor_arc);
         let tab_arc = Arc::clone(&tab_arc);
+        let state_arc = Arc::clone(&state_arc);
         app.on_note_text_edited(move |new_text| {
             if let Ok(mut ed) = editor_arc.lock() {
                 ed.set_content(new_text.as_str());
@@ -867,6 +868,10 @@ fn main() {
                     w.set_word_count(words as i32);
                     w.set_char_count(chars as i32);
                 }
+            }
+
+            if let Ok(mut st) = state_arc.lock() {
+                st.active_note_content = new_text.to_string();
             }
 
             if let Ok(mut tm) = tab_arc.lock() {
@@ -1091,6 +1096,38 @@ fn main() {
         app.on_block_navigate_down(move |_id, current_text| {
             if let Ok(mut ed) = editor_arc.lock() {
                 ed.navigate_to_next_block_with_save(Some(current_text.as_str()));
+                let updated_content = ed.content();
+
+                if let Ok(mut st) = state_arc.lock() {
+                    st.active_note_content = updated_content.clone();
+                }
+
+                let ast = to_slint_ast_blocks(&ed.generate_render_blocks());
+                if let Some(w) = app_weak.upgrade() {
+                    w.set_active_note_content(updated_content.as_str().into());
+                    w.set_ast_blocks(ModelRc::new(VecModel::from(ast)));
+                }
+            }
+        });
+    }
+
+    // Callback: Adicionar novo bloco no final da nota
+    {
+        let app_weak = app_weak.clone();
+        let editor_arc = Arc::clone(&editor_arc);
+        let state_arc = Arc::clone(&state_arc);
+
+        app.on_add_block_at_end_requested(move || {
+            if let Ok(mut ed) = editor_arc.lock() {
+                let blocks = ed.generate_render_blocks();
+                if let Some(last_block) = blocks.last() {
+                    let last_id = last_block.id;
+                    let last_raw = last_block.raw_text.clone();
+                    ed.split_or_insert_block_below(last_id, &last_raw);
+                } else {
+                    ed.set_content("Novo parágrafo");
+                    ed.start_editing_block(0);
+                }
                 let updated_content = ed.content();
 
                 if let Ok(mut st) = state_arc.lock() {

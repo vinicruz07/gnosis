@@ -105,6 +105,7 @@ export component AppWindow inherits Window {
     callback block_backspace_pressed(int);
     callback block_navigate_up(int, string);
     callback block_navigate_down(int, string);
+    callback add_block_at_end_requested();
 
     // Callbacks do Grafo 2D
     callback toggle_graph_view();
@@ -519,6 +520,7 @@ export component AppWindow inherits Window {
                                 block_backspace_pressed(id) => { root.block_backspace_pressed(id); }
                                 block_navigate_up(id, text) => { root.block_navigate_up(id, text); }
                                 block_navigate_down(id, text) => { root.block_navigate_down(id, text); }
+                                add_block_at_end_requested => { root.add_block_at_end_requested(); }
                             }
                         }
                     }
