@@ -290,5 +290,37 @@ mod tests {
         assert_eq!(SettingsTab::Editor.icon(), "✏️");
         assert_eq!(SettingsTab::About.icon(), "ℹ️");
     }
+
+    #[test]
+    fn test_settings_comprehensive_mutations_and_serialization() {
+        let mut controller = SettingsController::new();
+        
+        // Mutação de propriedades através do controlador
+        {
+            let s = controller.settings_mut();
+            s.set_font_size(20);
+            s.line_wrapping = false;
+            s.set_tab_size(6);
+            s.default_live_preview = false;
+            s.compact_mode = true;
+            s.theme_id = "aether".to_string();
+        }
+
+        let s = controller.settings();
+        assert_eq!(s.font_size, 20);
+        assert!(!s.line_wrapping);
+        assert_eq!(s.tab_size, 6);
+        assert!(!s.default_live_preview);
+        assert!(s.compact_mode);
+        assert_eq!(s.theme_id, "aether");
+        assert!(s.engine_info.contains("FemtoVG"));
+        assert!(!s.version.is_empty());
+
+        // Serialização e desserialização JSON seguras
+        let json = serde_json::to_string(s).unwrap_or_default();
+        assert!(!json.is_empty());
+        let recovered: UserSettings = serde_json::from_str(&json).unwrap_or_default();
+        assert_eq!(recovered, *s);
+    }
 }
 
