@@ -19,6 +19,17 @@ export component AppWindow inherits Window {
     min-width: 640px;
     min-height: 400px;
     background: Theme.background;
+    forward-focus: root_focus;
+
+    root_focus := FocusScope {
+        key-pressed(event) => {
+            if (event.modifiers.control && event.text == ",") {
+                root.open_settings();
+                return accept;
+            }
+            return reject;
+        }
+    }
 
     // Propriedades do Vault e Arquivos
     in property <string> vault_name: "Meu Vault";
@@ -206,6 +217,7 @@ export component AppWindow inherits Window {
                 folder_toggled(path) => { root.folder_toggled(path); }
                 toggle_sidebar => { root.toggle_sidebar(); }
                 new_note_requested => { root.new_note_requested(); }
+                settings_clicked => { root.open_settings(); }
             }
 
             // Botão de reabertura da barra lateral quando recolhida
@@ -444,6 +456,29 @@ export component AppWindow inherits Window {
 
                                 TouchArea {
                                     clicked => { root.open_quick_switcher("files"); }
+                                }
+                            }
+
+                            // Botão de Atalho para Configurações (Ctrl+,)
+                            Rectangle {
+                                width: 32px;
+                                height: 28px;
+                                border-radius: 4px;
+                                background: touch_settings_btn.has-hover ? Theme.surface_hover : Theme.surface;
+                                border-width: 1px;
+                                border-color: Theme.border;
+                                y: (parent.height - self.height) / 2;
+
+                                Text {
+                                    text: "⚙️";
+                                    font-size: 13px;
+                                    horizontal-alignment: center;
+                                    vertical-alignment: center;
+                                }
+
+                                touch_settings_btn := TouchArea {
+                                    mouse-cursor: pointer;
+                                    clicked => { root.open_settings(); }
                                 }
                             }
                         }

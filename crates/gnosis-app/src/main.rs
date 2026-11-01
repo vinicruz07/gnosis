@@ -13,9 +13,9 @@ use gnosis_app::{
     CanvasViewController, ConnectedPeerInfo, EditorController, EditorMode, EditorPane,
     GraphEdgeSlint, GraphEdgeVisual, GraphNodeSlint, GraphNodeVisual, GraphViewController,
     PeerData, QuickItem, QuickItemData, QuickMode, QuickSwitcherManager, RenderBlockData,
-    RenderBlockModel, SplitDirection, StickerItem, StickerItemSlint, StickerPickerController,
-    SyncDialogController, TabData, TabManager, Theme, ThemeColors, ThemeManager, TreeItemData,
-    TreeItemModel,
+    RenderBlockModel, SettingsController, SplitDirection, StickerItem, StickerItemSlint,
+    StickerPickerController, SyncDialogController, TabData, TabManager, Theme, ThemeColors,
+    ThemeManager, TreeItemData, TreeItemModel,
 };
 
 use gnosis_graph::model::{EdgeType, KnowledgeGraph, NodeType};
@@ -353,6 +353,19 @@ fn main() {
     app.set_canvas_nodes(ModelRc::new(VecModel::from(to_slint_canvas_nodes(&initial_c_nodes))));
     app.set_canvas_edges(ModelRc::new(VecModel::from(to_slint_canvas_edges(&initial_c_edges))));
 
+    let settings_ctrl = SettingsController::new();
+    let s = settings_ctrl.settings();
+    app.set_settings_open(settings_ctrl.is_open());
+    app.set_settings_active_tab(settings_ctrl.active_tab_index());
+    app.set_settings_font_size(s.font_size as i32);
+    app.set_settings_line_wrapping(s.line_wrapping);
+    app.set_settings_tab_size(s.tab_size as i32);
+    app.set_settings_default_live_preview(s.default_live_preview);
+    app.set_settings_compact_mode(s.compact_mode);
+    app.set_settings_theme_name("Abyss".into());
+    app.set_settings_engine_info(s.engine_info.as_str().into());
+    app.set_settings_app_version(s.version.as_str().into());
+
     let state_arc = Arc::new(Mutex::new(state));
     let tab_arc = Arc::new(Mutex::new(tab_mgr));
     let editor_arc = Arc::new(Mutex::new(editor_ctrl));
@@ -362,6 +375,7 @@ fn main() {
     let theme_arc = Arc::new(Mutex::new(theme_mgr));
     let sync_arc = Arc::new(Mutex::new(sync_ctrl));
     let sticker_arc = Arc::new(Mutex::new(sticker_ctrl));
+    let settings_arc = Arc::new(Mutex::new(settings_ctrl));
     let app_weak = app.as_weak();
 
 
@@ -376,6 +390,7 @@ fn main() {
 
                 if let Some(w) = app_weak.upgrade() {
                     apply_theme_to_slint(&w, &next);
+                    w.set_settings_theme_name(next.name.as_str().into());
                 }
             }
         });
@@ -1782,6 +1797,132 @@ fn main() {
         app.on_sticker_close_requested(move || {
             if let Some(w) = app_weak.upgrade() {
                 w.set_sticker_picker_open(false);
+            }
+        });
+    }
+
+    // Callbacks do Modal de Configurações (Settings)
+    // 1. Abrir Modal de Configurações
+    {
+        let app_weak = app_weak.clone();
+        let settings_arc = Arc::clone(&settings_arc);
+        app.on_open_settings(move || {
+            if let Ok(mut sc) = settings_arc.lock() {
+                sc.open();
+                let tab_idx = sc.active_tab_index();
+                if let Some(w) = app_weak.upgrade() {
+                    w.set_settings_open(true);
+                    w.set_settings_active_tab(tab_idx);
+                }
+                info!("Modal de Configurações aberto na aba {}.", tab_idx);
+            }
+        });
+    }
+
+    // 2. Fechar Modal de Configurações
+    {
+        let app_weak = app_weak.clone();
+        let settings_arc = Arc::clone(&settings_arc);
+        app.on_close_settings(move || {
+            if let Ok(mut sc) = settings_arc.lock() {
+                sc.close();
+                if let Some(w) = app_weak.upgrade() {
+                    w.set_settings_open(false);
+                }
+                info!("Modal de Configurações fechado.");
+            }
+        });
+    }
+
+    // 3. Selecionar Aba
+    {
+        let app_weak = app_weak.clone();
+        let settings_arc = Arc::clone(&settings_arc);
+        app.on_settings_tab_selected(move |tab_idx| {
+            if let Ok(mut sc) = settings_arc.lock() {
+                sc.select_tab_by_index(tab_idx);
+                let actual = sc.active_tab_index();
+                if let Some(w) = app_weak.upgrade() {
+                    w.set_settings_active_tab(actual);
+                }
+            }
+        });
+    }
+
+    // 4. Alterar Tamanho da Fonte
+    {
+        let app_weak = app_weak.clone();
+        let settings_arc = Arc::clone(&settings_arc);
+        app.on_settings_font_size_changed(move |new_size| {
+            if let Ok(mut sc) = settings_arc.lock() {
+                sc.settings_mut().set_font_size(new_size as u32);
+                let actual = sc.settings().font_size as i32;
+                if let Some(w) = app_weak.upgrade() {
+                    w.set_settings_font_size(actual);
+                }
+            }
+        });
+    }
+
+    // 5. Alterar Tamanho da Tabulação
+    {
+        let app_weak = app_weak.clone();
+        let settings_arc = Arc::clone(&settings_arc);
+        app.on_settings_tab_size_changed(move |new_tab| {
+            if let Ok(mut sc) = settings_arc.lock() {
+                sc.settings_mut().set_tab_size(new_tab as u32);
+                let actual = sc.settings().tab_size as i32;
+                if let Some(w) = app_weak.upgrade() {
+                    w.set_settings_tab_size(actual);
+                }
+            }
+        });
+    }
+
+    // 6. Alternar Quebra de Linha
+    {
+        let app_weak = app_weak.clone();
+        let settings_arc = Arc::clone(&settings_arc);
+        app.on_settings_line_wrapping_toggled(move || {
+            if let Ok(mut sc) = settings_arc.lock() {
+                let current = sc.settings().line_wrapping;
+                sc.settings_mut().line_wrapping = !current;
+                let actual = sc.settings().line_wrapping;
+                if let Some(w) = app_weak.upgrade() {
+                    w.set_settings_line_wrapping(actual);
+                }
+            }
+        });
+    }
+
+    // 7. Alternar Editor Padrão Live Preview
+    {
+        let app_weak = app_weak.clone();
+        let settings_arc = Arc::clone(&settings_arc);
+        app.on_settings_default_live_preview_toggled(move || {
+            if let Ok(mut sc) = settings_arc.lock() {
+                let current = sc.settings().default_live_preview;
+                sc.settings_mut().default_live_preview = !current;
+                let actual = sc.settings().default_live_preview;
+                if let Some(w) = app_weak.upgrade() {
+                    w.set_settings_default_live_preview(actual);
+                }
+            }
+        });
+    }
+
+    // 8. Alternar Modo Compacto
+    {
+        let app_weak = app_weak.clone();
+        let settings_arc = Arc::clone(&settings_arc);
+        app.on_settings_compact_mode_toggled(move || {
+            if let Ok(mut sc) = settings_arc.lock() {
+                let current = sc.settings().compact_mode;
+                sc.settings_mut().compact_mode = !current;
+                let actual = sc.settings().compact_mode;
+                if let Some(w) = app_weak.upgrade() {
+                    w.set_settings_compact_mode(actual);
+                }
             }
         });
     }

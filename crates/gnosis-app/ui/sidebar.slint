@@ -20,6 +20,7 @@ export component Sidebar inherits Rectangle {
     callback folder_toggled(string);
     callback toggle_sidebar();
     callback new_note_requested();
+    callback settings_clicked();
 
     background: Theme.sidebar_bg;
     width: root.is_collapsed ? 0px : 240px;
@@ -152,6 +153,43 @@ export component Sidebar inherits Rectangle {
                             }
                         }
                     }
+                }
+            }
+        }
+
+        // Rodapé da Barra Lateral: Botão de Configurações (Estilo Obsidian)
+        Rectangle {
+            height: 1px;
+            background: Theme.border;
+        }
+
+        Rectangle {
+            height: 32px;
+            border-radius: 6px;
+            background: touch_settings.has-hover ? Theme.surface_hover : transparent;
+
+            touch_settings := TouchArea {
+                mouse-cursor: pointer;
+                clicked => { root.settings_clicked(); }
+            }
+
+            HorizontalLayout {
+                padding-left: 8px;
+                padding-right: 8px;
+                spacing: 8px;
+                alignment: start;
+
+                Text {
+                    text: "⚙️";
+                    font-size: 14px;
+                    vertical-alignment: center;
+                }
+                Text {
+                    text: "Configurações";
+                    color: touch_settings.has-hover ? Theme.text_primary : Theme.text_secondary;
+                    font-size: 12px;
+                    font-weight: 500;
+                    vertical-alignment: center;
                 }
             }
         }
