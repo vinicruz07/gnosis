@@ -24,9 +24,19 @@ impl EditorMode {
 
     pub fn label(&self) -> &'static str {
         match self {
-            Self::Reading => "Leitura (Ctrl+E)",
-            Self::Edit => "Edição (Ctrl+E)",
+            Self::Reading => "✨ Live Preview",
+            Self::Edit => "📄 Fonte Bruta",
         }
+    }
+
+    /// Retorna verdadeiro se estiver no modo padrão Live Preview.
+    pub fn is_live_preview(&self) -> bool {
+        matches!(self, Self::Reading)
+    }
+
+    /// Retorna verdadeiro se estiver no modo técnico de Fonte Bruta.
+    pub fn is_source_mode(&self) -> bool {
+        matches!(self, Self::Edit)
     }
 }
 

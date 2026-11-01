@@ -6,6 +6,8 @@ export component StatusBar inherits Rectangle {
     in property <color> sync_color: Theme.success;
     in property <int> word_count: 0;
     in property <int> char_count: 0;
+    in property <string> editor_mode_label: "✨ Live Preview";
+    in property <bool> is_source_mode: false;
 
     callback theme_clicked();
     callback sync_clicked();
@@ -107,6 +109,28 @@ export component StatusBar inherits Rectangle {
 
                 touch_theme := TouchArea {
                     clicked => { root.theme_clicked(); }
+                }
+            }
+
+            // Indicador do Modo do Editor (Live Preview vs Fonte Bruta)
+            Rectangle {
+                height: 20px;
+                border-radius: 4px;
+                background: root.is_source_mode ? #313244 : transparent;
+                y: (parent.height - self.height) / 2;
+
+                HorizontalLayout {
+                    padding-left: 6px;
+                    padding-right: 6px;
+                    alignment: center;
+
+                    Text {
+                        text: root.editor_mode_label;
+                        color: root.is_source_mode ? #f9e2af : Theme.accent;
+                        font-size: 11px;
+                        font-weight: 500;
+                        vertical-alignment: center;
+                    }
                 }
             }
 

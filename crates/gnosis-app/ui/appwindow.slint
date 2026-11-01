@@ -359,14 +359,14 @@ export component AppWindow inherits Window {
                                 }
                             }
 
-                            // Botão Alternar Edição / Leitura (apenas se não estiver no Grafo nem no Canvas)
+                            // Botão Alternar Modo Live Preview / Fonte Bruta (apenas se não estiver no Grafo nem no Canvas)
                             if (!root.is_graph_view && !root.is_canvas_view): Rectangle {
-                                width: 120px;
+                                width: 140px;
                                 height: 28px;
                                 border-radius: 4px;
                                 background: Theme.surface;
                                 border-width: 1px;
-                                border-color: root.is_editing ? Theme.accent : Theme.border;
+                                border-color: root.is_editing ? #f9e2af : Theme.accent;
                                 y: (parent.height - self.height) / 2;
 
                                 HorizontalLayout {
@@ -374,8 +374,8 @@ export component AppWindow inherits Window {
                                     spacing: 6px;
 
                                     Text {
-                                        text: root.is_editing ? "✏️ Edição" : "👁️ Leitura";
-                                        color: root.is_editing ? Theme.accent : Theme.text_primary;
+                                        text: root.is_editing ? "📄 Fonte Bruta" : "✨ Live Preview";
+                                        color: root.is_editing ? #f9e2af : Theme.accent;
                                         font-size: 11px;
                                         font-weight: 600;
                                         vertical-alignment: center;
@@ -583,6 +583,8 @@ export component AppWindow inherits Window {
             sync_color: root.sync_color;
             word_count: root.word_count;
             char_count: root.char_count;
+            editor_mode_label: root.is_editing ? "📄 Fonte Bruta" : "✨ Live Preview";
+            is_source_mode: root.is_editing;
             theme_clicked => { root.cycle_theme(); }
             sync_clicked => { root.open_sync_modal(); }
         }
