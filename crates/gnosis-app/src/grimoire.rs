@@ -440,5 +440,39 @@ mod tests {
         mgr.toggle_modal();
         assert!(mgr.is_modal_open());
     }
+
+    #[test]
+    fn test_switch_multiple_grimoires_and_persistence() {
+        let temp_dir = std::env::temp_dir().join(format!("gnosis_test_grimoire_{}", md5_or_simple_hash(b"multi_switch")));
+        let _ = fs::remove_dir_all(&temp_dir);
+        let _ = fs::create_dir_all(&temp_dir);
+
+        let cfg_dir = temp_dir.join(".config_test");
+        let vaults_parent = temp_dir.join("vaults");
+
+        // Instância 1: cria dois grimórios
+        {
+            let mut mgr = GrimoireManager::with_config_dir(cfg_dir.clone());
+            let g1 = mgr.create_grimoire(&vaults_parent, "Grimório Alfa").unwrap_or_else(|e| panic!("{}", e));
+            let _g2 = mgr.create_grimoire(&vaults_parent, "Grimório Beta").unwrap_or_else(|e| panic!("{}", e));
+
+            assert_eq!(mgr.known_grimoires().len(), 2);
+            assert_eq!(mgr.active_grimoire().map(|g| g.name.as_str()), Some("Grimório Beta"));
+
+            // Alterna de volta para Alfa
+            let reopened = mgr.open_existing_grimoire(&g1.path).unwrap_or_else(|e| panic!("{}", e));
+            assert_eq!(reopened.name, "Grimório Alfa");
+            assert_eq!(mgr.active_grimoire().map(|g| g.name.as_str()), Some("Grimório Alfa"));
+        }
+
+        // Instância 2: recarrega do disco (app.json) e valida persistência
+        {
+            let mgr2 = GrimoireManager::with_config_dir(cfg_dir);
+            assert_eq!(mgr2.known_grimoires().len(), 2);
+            assert_eq!(mgr2.active_grimoire().map(|g| g.name.as_str()), Some("Grimório Alfa"));
+        }
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
 }
 
