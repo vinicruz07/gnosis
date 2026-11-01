@@ -21,6 +21,7 @@ export component Sidebar inherits Rectangle {
     callback toggle_sidebar();
     callback new_note_requested();
     callback settings_clicked();
+    callback grimoire_clicked();
 
     background: Theme.sidebar_bg;
     width: root.is_collapsed ? 0px : 240px;
@@ -38,21 +39,48 @@ export component Sidebar inherits Rectangle {
         padding: 8px;
         spacing: 6px;
 
-        // Cabeçalho da Barra Lateral
+        // Cabeçalho da Barra Lateral (Identidade do Grimório + Ações Rápidas)
         HorizontalLayout {
             height: 28px;
             alignment: space-between;
 
-            HorizontalLayout {
-                spacing: 6px;
-                alignment: start;
+            // Seletor Interativo do Grimório Ativo
+            Rectangle {
+                border-radius: 4px;
+                background: touch_grimoire_title.has-hover ? Theme.surface_hover : transparent;
 
-                Text {
-                    text: root.vault_title;
-                    color: Theme.text_primary;
-                    font-size: 13px;
-                    font-weight: 600;
-                    vertical-alignment: center;
+                touch_grimoire_title := TouchArea {
+                    mouse-cursor: pointer;
+                    clicked => { root.grimoire_clicked(); }
+                }
+
+                HorizontalLayout {
+                    padding-left: 4px;
+                    padding-right: 6px;
+                    spacing: 4px;
+                    alignment: start;
+
+                    Text {
+                        text: "📖";
+                        font-size: 13px;
+                        vertical-alignment: center;
+                    }
+
+                    Text {
+                        text: root.vault_title;
+                        color: touch_grimoire_title.has-hover ? Theme.accent : Theme.text_primary;
+                        font-size: 13px;
+                        font-weight: 600;
+                        vertical-alignment: center;
+                        overflow: elide;
+                    }
+
+                    Text {
+                        text: "▾";
+                        color: Theme.text_muted;
+                        font-size: 10px;
+                        vertical-alignment: center;
+                    }
                 }
             }
 
@@ -60,7 +88,7 @@ export component Sidebar inherits Rectangle {
                 spacing: 4px;
                 alignment: end;
 
-                // Botão Nova Nota
+                // Botão Nova Nota (ao lado do nome do Grimório)
                 Rectangle {
                     width: 24px;
                     height: 24px;
@@ -69,12 +97,13 @@ export component Sidebar inherits Rectangle {
 
                     Text {
                         text: "➕";
-                        font-size: 10px;
+                        font-size: 11px;
                         vertical-alignment: center;
                         horizontal-alignment: center;
                     }
 
                     touch_new := TouchArea {
+                        mouse-cursor: pointer;
                         clicked => { root.new_note_requested(); }
                     }
                 }
@@ -95,6 +124,7 @@ export component Sidebar inherits Rectangle {
                     }
 
                     touch_collapse := TouchArea {
+                        mouse-cursor: pointer;
                         clicked => { root.toggle_sidebar(); }
                     }
                 }

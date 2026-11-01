@@ -12,10 +12,10 @@ use gnosis_app::{
     AppState, AppWindow, CanvasEdgeSlint, CanvasEdgeVisual, CanvasNodeSlint, CanvasNodeVisual,
     CanvasViewController, ConnectedPeerInfo, EditorController, EditorMode, EditorPane,
     GraphEdgeSlint, GraphEdgeVisual, GraphNodeSlint, GraphNodeVisual, GraphViewController,
-    PeerData, QuickItem, QuickItemData, QuickMode, QuickSwitcherManager, RenderBlockData,
-    RenderBlockModel, SettingsController, SplitDirection, StickerItem, StickerItemSlint,
-    StickerPickerController, SyncDialogController, TabData, TabManager, Theme, ThemeColors,
-    ThemeManager, TreeItemData, TreeItemModel,
+    GrimoireItemData, GrimoireManager, PeerData, QuickItem, QuickItemData, QuickMode,
+    QuickSwitcherManager, RenderBlockData, RenderBlockModel, SettingsController, SplitDirection,
+    StickerItem, StickerItemSlint, StickerPickerController, SyncDialogController, TabData,
+    TabManager, Theme, ThemeColors, ThemeManager, TreeItemData, TreeItemModel,
 };
 
 use gnosis_graph::model::{EdgeType, KnowledgeGraph, NodeType};
@@ -207,6 +207,22 @@ fn to_slint_canvas_edges(edges: &[CanvasEdgeVisual]) -> Vec<CanvasEdgeSlint> {
         .collect()
 }
 
+fn to_slint_grimoires(
+    known: &[gnosis_app::grimoire::GrimoireInfo],
+    active_id: Option<&str>,
+) -> Vec<GrimoireItemData> {
+    known
+        .iter()
+        .map(|g| GrimoireItemData {
+            id: g.id.as_str().into(),
+            name: g.name.as_str().into(),
+            path: g.path.to_string_lossy().as_ref().into(),
+            is_active: active_id == Some(g.id.as_str()),
+            is_favorite: g.is_favorite,
+        })
+        .collect()
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     tracing_subscriber::fmt::init();
     info!("Inicializando Gnosis - Temas Místicos via TOML (Abyss, Aether, Arcana, Boreas)");
@@ -219,23 +235,43 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let initial_theme = theme_mgr.active_theme().clone();
     apply_theme_to_slint(&app, &initial_theme);
 
-    // Inicializa estado do Vault e árvore de notas
-    let mut state = AppState::new("Meu Vault", "vault");
-    let initial_paths = [
-        "00_Inbox/Ideias Rápidas.md",
-        "01_Projetos/Rust/Gnosis Core.md",
-        "01_Projetos/Rust/Slint Shell.md",
-        "02_Estudos/Grafos e Física 2D.md",
-        "03_Arquivo/2026/Planejamento.md",
-        "Diário de Bordo.md",
-    ];
-    state.populate_from_paths(initial_paths);
-    state.set_entry_icon("01_Projetos/Rust/Gnosis Core.md", Some("🧠".to_string()));
-    state.set_entry_icon("00_Inbox/Ideias Rápidas.md", Some("💡".to_string()));
-    state.set_entry_icon("02_Estudos/Grafos e Física 2D.md", Some("🕸️".to_string()));
-    state.set_entry_icon("Diário de Bordo.md", Some("📖".to_string()));
-    state.set_entry_icon("03_Arquivo/2026/Planejamento.md", Some("📅".to_string()));
-    state.set_entry_icon("01_Projetos/Rust/Slint Shell.md", Some("🎨".to_string()));
+    // Inicializa gerenciador de Grimórios (Vaults)
+    let grimoire_mgr = GrimoireManager::default();
+    let initial_grimoire_name = if let Some(active) = grimoire_mgr.active_grimoire() {
+        active.name.clone()
+    } else {
+        "Meu Grimório".to_string()
+    };
+    let initial_grimoire_path = if let Some(active) = grimoire_mgr.active_grimoire() {
+        active.path.to_string_lossy().to_string()
+    } else {
+        "vault".to_string()
+    };
+
+    // Inicializa estado do Grimório e árvore de notas
+    let mut state = AppState::new(initial_grimoire_name.clone(), initial_grimoire_path.clone());
+    app.set_vault_name(initial_grimoire_name.as_str().into());
+
+    let scanned_paths = grimoire_mgr.scan_active_grimoire_relative_paths();
+    if !scanned_paths.is_empty() {
+        state.populate_from_paths(scanned_paths);
+    } else {
+        let initial_paths = [
+            "00_Inbox/Ideias Rápidas.md",
+            "01_Projetos/Rust/Gnosis Core.md",
+            "01_Projetos/Rust/Slint Shell.md",
+            "02_Estudos/Grafos e Física 2D.md",
+            "03_Arquivo/2026/Planejamento.md",
+            "Diário de Bordo.md",
+        ];
+        state.populate_from_paths(initial_paths);
+        state.set_entry_icon("01_Projetos/Rust/Gnosis Core.md", Some("🧠".to_string()));
+        state.set_entry_icon("00_Inbox/Ideias Rápidas.md", Some("💡".to_string()));
+        state.set_entry_icon("02_Estudos/Grafos e Física 2D.md", Some("🕸️".to_string()));
+        state.set_entry_icon("Diário de Bordo.md", Some("📖".to_string()));
+        state.set_entry_icon("03_Arquivo/2026/Planejamento.md", Some("📅".to_string()));
+        state.set_entry_icon("01_Projetos/Rust/Slint Shell.md", Some("🎨".to_string()));
+    }
 
     // Conteúdo demonstrativo rico com múltiplos blocos AST
     let sample_markdown = r##"---
@@ -366,6 +402,19 @@ fn main() {
     app.set_settings_engine_info(s.engine_info.as_str().into());
     app.set_settings_app_version(s.version.as_str().into());
 
+    let initial_grimoires = to_slint_grimoires(
+        grimoire_mgr.known_grimoires(),
+        grimoire_mgr.active_grimoire().map(|g| g.id.as_str()),
+    );
+    app.set_grimoires_list(ModelRc::new(VecModel::from(initial_grimoires)));
+    app.set_grimoire_modal_open(false);
+    app.set_grimoire_active_section(0);
+    app.set_grimoire_new_name("Meu Novo Grimório".into());
+    app.set_grimoire_new_parent_path(".".into());
+    app.set_grimoire_open_path("".into());
+    app.set_grimoire_status_message("".into());
+    app.set_grimoire_status_is_error(false);
+
     let state_arc = Arc::new(Mutex::new(state));
     let tab_arc = Arc::new(Mutex::new(tab_mgr));
     let editor_arc = Arc::new(Mutex::new(editor_ctrl));
@@ -376,6 +425,7 @@ fn main() {
     let sync_arc = Arc::new(Mutex::new(sync_ctrl));
     let sticker_arc = Arc::new(Mutex::new(sticker_ctrl));
     let settings_arc = Arc::new(Mutex::new(settings_ctrl));
+    let grimoire_arc = Arc::new(Mutex::new(grimoire_mgr));
     let app_weak = app.as_weak();
 
 
@@ -1922,6 +1972,361 @@ fn main() {
                 let actual = sc.settings().compact_mode;
                 if let Some(w) = app_weak.upgrade() {
                     w.set_settings_compact_mode(actual);
+                }
+            }
+        });
+    }
+
+    // Callback: Botão Nova Nota (+) ao lado do título do Grimório
+    {
+        let app_weak = app_weak.clone();
+        let state_arc = Arc::clone(&state_arc);
+        let grimoire_arc = Arc::clone(&grimoire_arc);
+        let editor_arc = Arc::clone(&editor_arc);
+        let tab_arc = Arc::clone(&tab_arc);
+
+        app.on_new_note_requested(move || {
+            let mut created_title = "Nova Nota".to_string();
+            let mut created_path = "Nova Nota.md".to_string();
+            let default_content = "# Nova Nota\n\nComece a registrar suas ideias aqui...";
+
+            if let Ok(gm) = grimoire_arc.lock() {
+                if gm.active_grimoire().is_some() {
+                    // Descobre um nome disponível
+                    let existing = gm.scan_active_grimoire_relative_paths();
+                    let mut counter = 1;
+                    while existing.contains(&created_path) {
+                        counter += 1;
+                        created_title = format!("Nova Nota {}", counter);
+                        created_path = format!("{}.md", created_title);
+                    }
+
+                    if let Err(e) = gm.create_note_in_active(&created_title, default_content) {
+                        tracing::warn!("Falha ao criar nota no disco: {}", e);
+                    }
+                }
+            }
+
+            if let Ok(mut st) = state_arc.lock() {
+                st.add_entry(gnosis_app::FileTreeEntry {
+                    id: created_path.clone(),
+                    name: created_title.clone(),
+                    path: created_path.clone(),
+                    is_folder: false,
+                    parent_path: None,
+                    icon: Some("📝".to_string()),
+                });
+                st.select_note(&created_path, default_content);
+
+                if let Some(w) = app_weak.upgrade() {
+                    let items = to_slint_tree(&st.visible_tree_items());
+                    w.set_file_tree(ModelRc::new(VecModel::from(items)));
+                    w.set_active_note_title(created_title.as_str().into());
+                    w.set_active_note_icon("📝".into());
+                    w.set_active_note_content(default_content.into());
+                    w.set_word_count(st.word_count() as i32);
+                    w.set_char_count(st.char_count() as i32);
+                }
+            }
+
+            if let Ok(mut ed) = editor_arc.lock() {
+                ed.set_content(default_content);
+                if let Some(w) = app_weak.upgrade() {
+                    let ast = to_slint_ast_blocks(&ed.generate_render_blocks());
+                    w.set_ast_blocks(ModelRc::new(VecModel::from(ast)));
+                }
+            }
+
+            if let Ok(mut tm) = tab_arc.lock() {
+                tm.open_note_with_icon(&created_path, &created_title, Some("📝".to_string()));
+                if let Some(w) = app_weak.upgrade() {
+                    let tabs = to_slint_tabs(tm.active_pane());
+                    w.set_tabs(ModelRc::new(VecModel::from(tabs)));
+                }
+            }
+
+            info!("Nova nota criada e aberta com sucesso: {}", created_path);
+        });
+    }
+
+    // Callbacks do Modal de Grimórios (Vaults)
+    // 1. Abrir Modal de Grimórios
+    {
+        let app_weak = app_weak.clone();
+        let grimoire_arc = Arc::clone(&grimoire_arc);
+        app.on_open_grimoire_modal(move || {
+            if let Ok(mut gm) = grimoire_arc.lock() {
+                gm.open_modal();
+                let grims = to_slint_grimoires(gm.known_grimoires(), gm.active_grimoire().map(|g| g.id.as_str()));
+                if let Some(w) = app_weak.upgrade() {
+                    w.set_grimoire_modal_open(true);
+                    w.set_grimoires_list(ModelRc::new(VecModel::from(grims)));
+                    w.set_grimoire_status_message("".into());
+                    w.set_grimoire_status_is_error(false);
+                }
+                info!("Modal de Grimórios aberto.");
+            }
+        });
+    }
+
+    // 2. Fechar Modal de Grimórios
+    {
+        let app_weak = app_weak.clone();
+        let grimoire_arc = Arc::clone(&grimoire_arc);
+        app.on_close_grimoire_modal(move || {
+            if let Ok(mut gm) = grimoire_arc.lock() {
+                gm.close_modal();
+                if let Some(w) = app_weak.upgrade() {
+                    w.set_grimoire_modal_open(false);
+                }
+            }
+        });
+    }
+
+    // 3. Alternar Seção do Modal
+    {
+        let app_weak = app_weak.clone();
+        app.on_grimoire_section_changed(move |sec| {
+            if let Some(w) = app_weak.upgrade() {
+                w.set_grimoire_active_section(sec);
+                w.set_grimoire_status_message("".into());
+                w.set_grimoire_status_is_error(false);
+            }
+        });
+    }
+
+    // 4. Criar Novo Grimório em Disco
+    {
+        let app_weak = app_weak.clone();
+        let grimoire_arc = Arc::clone(&grimoire_arc);
+        let state_arc = Arc::clone(&state_arc);
+        let editor_arc = Arc::clone(&editor_arc);
+        let tab_arc = Arc::clone(&tab_arc);
+
+        app.on_create_grimoire_requested(move |name, parent_path| {
+            let name_str = name.trim();
+            let parent_str = parent_path.trim();
+
+            if let Ok(mut gm) = grimoire_arc.lock() {
+                let parent_dir = std::path::Path::new(parent_str);
+                match gm.create_grimoire(parent_dir, name_str) {
+                    Ok(created) => {
+                        let grims = to_slint_grimoires(gm.known_grimoires(), Some(&created.id));
+                        let scanned = gm.scan_active_grimoire_relative_paths();
+
+                        if let Ok(mut st) = state_arc.lock() {
+                            st.vault_name = created.name.clone();
+                            st.vault_path = created.path.to_string_lossy().to_string();
+                            st.entries.clear();
+                            st.populate_from_paths(&scanned);
+
+                            // Seleciona a nota de boas-vindas
+                            let welcome_content = std::fs::read_to_string(created.path.join("Boas-vindas ao Grimório.md")).unwrap_or_default();
+                            st.select_note("Boas-vindas ao Grimório.md", &welcome_content);
+
+                            if let Some(w) = app_weak.upgrade() {
+                                w.set_vault_name(created.name.as_str().into());
+                                w.set_file_tree(ModelRc::new(VecModel::from(to_slint_tree(&st.visible_tree_items()))));
+                                w.set_active_note_title("Boas-vindas ao Grimório".into());
+                                w.set_active_note_icon("📖".into());
+                                w.set_active_note_content(welcome_content.as_str().into());
+                                w.set_word_count(st.word_count() as i32);
+                                w.set_char_count(st.char_count() as i32);
+                            }
+
+                            if let Ok(mut ed) = editor_arc.lock() {
+                                ed.set_content(&welcome_content);
+                                if let Some(w) = app_weak.upgrade() {
+                                    let ast = to_slint_ast_blocks(&ed.generate_render_blocks());
+                                    w.set_ast_blocks(ModelRc::new(VecModel::from(ast)));
+                                }
+                            }
+
+                            if let Ok(mut tm) = tab_arc.lock() {
+                                *tm = TabManager::new();
+                                tm.open_note_with_icon("Boas-vindas ao Grimório.md", "Boas-vindas ao Grimório", Some("📖".to_string()));
+                                if let Some(w) = app_weak.upgrade() {
+                                    let tabs = to_slint_tabs(tm.active_pane());
+                                    w.set_tabs(ModelRc::new(VecModel::from(tabs)));
+                                }
+                            }
+                        }
+
+                        if let Some(w) = app_weak.upgrade() {
+                            w.set_grimoires_list(ModelRc::new(VecModel::from(grims)));
+                            w.set_grimoire_modal_open(false);
+                            w.set_grimoire_status_message("".into());
+                        }
+                        info!("Novo Grimório '{}' criado e ativado com sucesso.", created.name);
+                    }
+                    Err(err) => {
+                        if let Some(w) = app_weak.upgrade() {
+                            w.set_grimoire_status_message(err.as_str().into());
+                            w.set_grimoire_status_is_error(true);
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    // 5. Abrir Pasta Existente como Grimório
+    {
+        let app_weak = app_weak.clone();
+        let grimoire_arc = Arc::clone(&grimoire_arc);
+        let state_arc = Arc::clone(&state_arc);
+        let editor_arc = Arc::clone(&editor_arc);
+        let tab_arc = Arc::clone(&tab_arc);
+
+        app.on_open_existing_grimoire_requested(move |path_slint| {
+            let path_str = path_slint.trim();
+            if let Ok(mut gm) = grimoire_arc.lock() {
+                let target_path = std::path::Path::new(path_str);
+                match gm.open_existing_grimoire(target_path) {
+                    Ok(opened) => {
+                        let grims = to_slint_grimoires(gm.known_grimoires(), Some(&opened.id));
+                        let scanned = gm.scan_active_grimoire_relative_paths();
+
+                        if let Ok(mut st) = state_arc.lock() {
+                            st.vault_name = opened.name.clone();
+                            st.vault_path = opened.path.to_string_lossy().to_string();
+                            st.entries.clear();
+                            st.populate_from_paths(&scanned);
+
+                            let first_note = scanned.first().cloned();
+                            let content = if let Some(ref note_rel) = first_note {
+                                std::fs::read_to_string(opened.path.join(note_rel)).unwrap_or_default()
+                            } else {
+                                String::new()
+                            };
+
+                            if let Some(ref note_rel) = first_note {
+                                st.select_note(note_rel, &content);
+                            }
+
+                            if let Some(w) = app_weak.upgrade() {
+                                w.set_vault_name(opened.name.as_str().into());
+                                w.set_file_tree(ModelRc::new(VecModel::from(to_slint_tree(&st.visible_tree_items()))));
+                                if first_note.is_some() {
+                                    w.set_active_note_title(st.active_note_title.as_str().into());
+                                    w.set_active_note_content(content.as_str().into());
+                                }
+                            }
+
+                            if let Ok(mut ed) = editor_arc.lock() {
+                                ed.set_content(&content);
+                                if let Some(w) = app_weak.upgrade() {
+                                    let ast = to_slint_ast_blocks(&ed.generate_render_blocks());
+                                    w.set_ast_blocks(ModelRc::new(VecModel::from(ast)));
+                                }
+                            }
+
+                            if let Ok(mut tm) = tab_arc.lock() {
+                                *tm = TabManager::new();
+                                if let Some(ref note_rel) = first_note {
+                                    tm.open_note_with_icon(note_rel, note_rel.trim_end_matches(".md"), Some("📄".to_string()));
+                                }
+                                if let Some(w) = app_weak.upgrade() {
+                                    let tabs = to_slint_tabs(tm.active_pane());
+                                    w.set_tabs(ModelRc::new(VecModel::from(tabs)));
+                                }
+                            }
+                        }
+
+                        if let Some(w) = app_weak.upgrade() {
+                            w.set_grimoires_list(ModelRc::new(VecModel::from(grims)));
+                            w.set_grimoire_modal_open(false);
+                            w.set_grimoire_status_message("".into());
+                        }
+                        info!("Grimório existente '{}' aberto e carregado com sucesso.", opened.name);
+                    }
+                    Err(err) => {
+                        if let Some(w) = app_weak.upgrade() {
+                            w.set_grimoire_status_message(err.as_str().into());
+                            w.set_grimoire_status_is_error(true);
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    // 6. Selecionar Grimório da Lista de Conhecidos
+    {
+        let app_weak = app_weak.clone();
+        let grimoire_arc = Arc::clone(&grimoire_arc);
+        let state_arc = Arc::clone(&state_arc);
+        let editor_arc = Arc::clone(&editor_arc);
+        let tab_arc = Arc::clone(&tab_arc);
+
+        app.on_grimoire_selected(move |id_slint| {
+            let id_str = id_slint.as_str();
+            let mut target_path = None;
+
+            if let Ok(gm) = grimoire_arc.lock() {
+                if let Some(item) = gm.known_grimoires().iter().find(|g| g.id == id_str) {
+                    target_path = Some(item.path.clone());
+                }
+            }
+
+            if let Some(path) = target_path {
+                if let Ok(mut gm) = grimoire_arc.lock() {
+                    if let Ok(opened) = gm.open_existing_grimoire(&path) {
+                        let grims = to_slint_grimoires(gm.known_grimoires(), Some(&opened.id));
+                        let scanned = gm.scan_active_grimoire_relative_paths();
+
+                        if let Ok(mut st) = state_arc.lock() {
+                            st.vault_name = opened.name.clone();
+                            st.vault_path = opened.path.to_string_lossy().to_string();
+                            st.entries.clear();
+                            st.populate_from_paths(&scanned);
+
+                            let first_note = scanned.first().cloned();
+                            let content = if let Some(ref note_rel) = first_note {
+                                std::fs::read_to_string(opened.path.join(note_rel)).unwrap_or_default()
+                            } else {
+                                String::new()
+                            };
+
+                            if let Some(ref note_rel) = first_note {
+                                st.select_note(note_rel, &content);
+                            }
+
+                            if let Some(w) = app_weak.upgrade() {
+                                w.set_vault_name(opened.name.as_str().into());
+                                w.set_file_tree(ModelRc::new(VecModel::from(to_slint_tree(&st.visible_tree_items()))));
+                                if first_note.is_some() {
+                                    w.set_active_note_title(st.active_note_title.as_str().into());
+                                    w.set_active_note_content(content.as_str().into());
+                                }
+                            }
+
+                            if let Ok(mut ed) = editor_arc.lock() {
+                                ed.set_content(&content);
+                                if let Some(w) = app_weak.upgrade() {
+                                    let ast = to_slint_ast_blocks(&ed.generate_render_blocks());
+                                    w.set_ast_blocks(ModelRc::new(VecModel::from(ast)));
+                                }
+                            }
+
+                            if let Ok(mut tm) = tab_arc.lock() {
+                                *tm = TabManager::new();
+                                if let Some(ref note_rel) = first_note {
+                                    tm.open_note_with_icon(note_rel, note_rel.trim_end_matches(".md"), Some("📄".to_string()));
+                                }
+                                if let Some(w) = app_weak.upgrade() {
+                                    let tabs = to_slint_tabs(tm.active_pane());
+                                    w.set_tabs(ModelRc::new(VecModel::from(tabs)));
+                                }
+                            }
+                        }
+
+                        if let Some(w) = app_weak.upgrade() {
+                            w.set_grimoires_list(ModelRc::new(VecModel::from(grims)));
+                            w.set_grimoire_modal_open(false);
+                        }
+                        info!("Grimório alternado para '{}'.", opened.name);
+                    }
                 }
             }
         });
