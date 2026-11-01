@@ -885,10 +885,17 @@ fn main() {
     {
         let app_weak = app_weak.clone();
         let editor_arc = Arc::clone(&editor_arc);
-        app.on_task_checkbox_toggled(move |_idx| {
-            if let Ok(ed) = editor_arc.lock() {
+        let state_arc = Arc::clone(&state_arc);
+        app.on_task_checkbox_toggled(move |id| {
+            if let Ok(mut ed) = editor_arc.lock() {
+                ed.toggle_task_checkbox(id as usize);
+                let updated_content = ed.content();
+                if let Ok(mut st) = state_arc.lock() {
+                    st.active_note_content = updated_content.clone();
+                }
                 let ast = to_slint_ast_blocks(&ed.generate_render_blocks());
                 if let Some(w) = app_weak.upgrade() {
+                    w.set_active_note_content(updated_content.as_str().into());
                     w.set_ast_blocks(ModelRc::new(VecModel::from(ast)));
                 }
             }

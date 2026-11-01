@@ -231,12 +231,12 @@ export component RichViewer inherits Rectangle {
                     }
                 }
 
-                // Bloco de Código Estilizado
+                // Bloco de Código Estilizado em repouso
                 if (!block.is_editing && block.kind == "code"): Rectangle {
-                    background: #11111b;
+                    background: touch_code.has-hover ? #181825 : #11111b;
                     border-radius: 6px;
                     border-width: 1px;
-                    border-color: Theme.border;
+                    border-color: touch_code.has-hover ? Theme.accent : Theme.border;
 
                     VerticalLayout {
                         padding: 10px;
@@ -244,12 +244,17 @@ export component RichViewer inherits Rectangle {
 
                         // Rótulo da Linguagem
                         HorizontalLayout {
-                            alignment: end;
+                            alignment: space-between;
                             Text {
-                                text: block.extra;
-                                color: Theme.text_muted;
+                                text: "💻 " + block.extra;
+                                color: Theme.accent;
                                 font-size: 10px;
                                 font-weight: 600;
+                            }
+                            Text {
+                                text: "Clique para editar";
+                                color: Theme.text_muted;
+                                font-size: 10px;
                             }
                         }
 
@@ -260,6 +265,10 @@ export component RichViewer inherits Rectangle {
                             font-size: 13px;
                             wrap: word-wrap;
                         }
+                    }
+
+                    touch_code := TouchArea {
+                        clicked => { root.block_clicked(block.id); }
                     }
                 }
 
@@ -317,9 +326,9 @@ export component RichViewer inherits Rectangle {
                     }
                 }
 
-                // Tarefa com Checkbox Interativo
-                if (block.kind == "task"): Rectangle {
-                    height: 24px;
+                // Tarefa com Checkbox Interativo em repouso
+                if (!block.is_editing && block.kind == "task"): Rectangle {
+                    height: 26px;
 
                     HorizontalLayout {
                         spacing: 8px;
@@ -327,8 +336,8 @@ export component RichViewer inherits Rectangle {
 
                         // Caixa de seleção
                         Rectangle {
-                            width: 16px;
-                            height: 16px;
+                            width: 18px;
+                            height: 18px;
                             border-radius: 4px;
                             border-width: 1px;
                             border-color: block.is_checked ? Theme.accent : Theme.text_muted;
@@ -338,23 +347,38 @@ export component RichViewer inherits Rectangle {
                             Text {
                                 text: block.is_checked ? "✓" : "";
                                 color: #11111b;
-                                font-size: 11px;
+                                font-size: 12px;
                                 font-weight: 700;
                                 horizontal-alignment: center;
                                 vertical-alignment: center;
                             }
 
                             TouchArea {
-                                clicked => { root.task_toggled(idx); }
+                                clicked => { root.task_toggled(block.id); }
                             }
                         }
 
-                        // Texto da Tarefa
-                        Text {
-                            text: block.text;
-                            color: block.is_checked ? Theme.text_muted : Theme.text_primary;
-                            font-size: 13px;
-                            vertical-alignment: center;
+                        // Texto da Tarefa com clique para editar
+                        Rectangle {
+                            horizontal-stretch: 1;
+                            background: touch_task_txt.has-hover ? Theme.surface_hover : transparent;
+                            border-radius: 4px;
+
+                            HorizontalLayout {
+                                padding-left: 6px;
+                                padding-right: 6px;
+
+                                Text {
+                                    text: block.text;
+                                    color: block.is_checked ? Theme.text_muted : Theme.text_primary;
+                                    font-size: 13px;
+                                    vertical-alignment: center;
+                                }
+                            }
+
+                            touch_task_txt := TouchArea {
+                                clicked => { root.block_clicked(block.id); }
+                            }
                         }
                     }
                 }
@@ -387,6 +411,45 @@ export component RichViewer inherits Rectangle {
                     }
 
                     touch_quote := TouchArea {
+                        clicked => { root.block_clicked(block.id); }
+                    }
+                }
+
+                // Tabela Markdown em repouso
+                if (!block.is_editing && block.kind == "table"): Rectangle {
+                    background: touch_tbl.has-hover ? Theme.surface_hover : Theme.surface;
+                    border-radius: 6px;
+                    border-width: 1px;
+                    border-color: Theme.border;
+
+                    VerticalLayout {
+                        padding: 10px;
+                        spacing: 6px;
+
+                        HorizontalLayout {
+                            alignment: space-between;
+                            Text {
+                                text: "📊 Tabela";
+                                color: Theme.accent;
+                                font-size: 11px;
+                                font-weight: 600;
+                            }
+                            Text {
+                                text: "Clique para editar";
+                                color: Theme.text_muted;
+                                font-size: 10px;
+                            }
+                        }
+
+                        Text {
+                            text: block.text;
+                            color: Theme.text_primary;
+                            font-size: 13px;
+                            wrap: word-wrap;
+                        }
+                    }
+
+                    touch_tbl := TouchArea {
                         clicked => { root.block_clicked(block.id); }
                     }
                 }

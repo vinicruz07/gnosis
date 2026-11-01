@@ -150,6 +150,27 @@ impl EditorController {
         self.active_editing_block_id = None;
     }
 
+    /// Alterna o estado de marcação de uma tarefa (`- [ ]` <-> `- [x]`) preservando o texto da nota.
+    pub fn toggle_task_checkbox(&mut self, block_id: usize) {
+        let blocks = self.generate_render_blocks();
+        if let Some(target) = blocks.into_iter().find(|b| b.id == block_id && b.kind == "task") {
+            let current_raw = target.raw_text.trim();
+            let new_raw = if current_raw.starts_with("- [ ]") {
+                current_raw.replacen("- [ ]", "- [x]", 1)
+            } else if current_raw.starts_with("- [x]") || current_raw.starts_with("- [X]") {
+                current_raw.replacen("- [x]", "- [ ]", 1).replacen("- [X]", "- [ ]", 1)
+            } else if current_raw.starts_with("* [ ]") {
+                current_raw.replacen("* [ ]", "* [x]", 1)
+            } else if current_raw.starts_with("* [x]") || current_raw.starts_with("* [X]") {
+                current_raw.replacen("* [x]", "* [ ]", 1).replacen("* [X]", "* [ ]", 1)
+            } else {
+                current_raw.to_string()
+            };
+
+            let _ = self.buffer.replace_range(target.span_start, target.span_end, &new_raw);
+        }
+    }
+
     /// Alterna entre modo de Edição e modo de Leitura com preservação integral do conteúdo.
     pub fn toggle_mode(&mut self) -> EditorMode {
         self.mode = self.mode.toggle();
@@ -543,5 +564,41 @@ fn main() { println!("Gnosis"); }
         assert!(content.contains("# Introdução"));
         assert!(content.contains("## Subseção"));
         assert!(content.contains("Este é o parágrafo modificado cirurgicamente."));
+    }
+
+    #[test]
+    fn test_task_toggle_and_code_table_editing_in_live_preview() {
+        let markdown = "- [ ] Ler Nietzsche\n\n```rust\nfn rodar() {}\n```\n\n| Item | Preço |\n|---|---|\n| Livro | 50 |";
+        let mut controller = EditorController::new("Tarefas.md", markdown);
+
+        let blocks = controller.generate_render_blocks();
+        assert_eq!(blocks.len(), 3);
+        assert_eq!(blocks[0].kind, "task");
+        assert!(!blocks[0].is_checked);
+
+        // Alterna o checkbox da tarefa
+        controller.toggle_task_checkbox(0);
+        assert!(controller.content().contains("- [x] Ler Nietzsche"));
+        let blocks_toggled = controller.generate_render_blocks();
+        assert!(blocks_toggled[0].is_checked);
+
+        // Alterna de volta
+        controller.toggle_task_checkbox(0);
+        assert!(controller.content().contains("- [ ] Ler Nietzsche"));
+
+        // Edita o bloco de código (bloco 1)
+        assert_eq!(blocks[1].kind, "code");
+        controller.start_editing_block(1);
+        controller.apply_block_edit(1, "```python\nprint('Python')\n```");
+        assert!(controller.content().contains("```python"));
+        assert!(controller.content().contains("print('Python')"));
+
+        // Edita a tabela (bloco 2)
+        let blocks_after_code = controller.generate_render_blocks();
+        assert_eq!(blocks_after_code[2].kind, "table");
+        controller.start_editing_block(2);
+        controller.apply_block_edit(2, "| Item | Preço |\n|---|---|\n| Caderno | 25 |");
+        assert!(controller.content().contains("Caderno"));
+        assert!(controller.content().contains("25"));
     }
 }
