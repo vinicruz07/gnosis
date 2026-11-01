@@ -9,6 +9,7 @@ import { GraphCanvas, GraphNodeSlint, GraphEdgeSlint } from "graph_canvas.slint"
 import { CanvasView, CanvasNodeSlint, CanvasEdgeSlint } from "canvas_view.slint";
 import { SyncModal, PeerData } from "sync_modal.slint";
 import { StickerPickerModal, StickerItemSlint } from "sticker_picker.slint";
+import { SettingsModal } from "settings_modal.slint";
 
 
 export component AppWindow inherits Window {
@@ -76,6 +77,18 @@ export component AppWindow inherits Window {
     in property <bool> sticker_picker_open: false;
     in property <[StickerItemSlint]> sticker_picker_items: [];
     in property <string> sticker_picker_category: "Todos";
+
+    // Propriedades do Modal de Configurações
+    in-out property <bool> settings_open: false;
+    in-out property <int> settings_active_tab: 0;
+    in-out property <int> settings_font_size: 15;
+    in-out property <bool> settings_line_wrapping: true;
+    in-out property <int> settings_tab_size: 4;
+    in-out property <bool> settings_default_live_preview: true;
+    in-out property <bool> settings_compact_mode: false;
+    in property <string> settings_theme_name: "Abyss";
+    in property <string> settings_engine_info: "FemtoVG / Software Renderer (Hardware 2015- 60FPS)";
+    in property <string> settings_app_version: "0.1.0";
 
 
     // Propriedades da Barra de Status
@@ -162,6 +175,16 @@ export component AppWindow inherits Window {
     callback sticker_category_selected(string);
     callback sticker_selected(string);
     callback sticker_close_requested();
+
+    // Callbacks do Modal de Configurações
+    callback open_settings();
+    callback close_settings();
+    callback settings_tab_selected(int);
+    callback settings_font_size_changed(int);
+    callback settings_tab_size_changed(int);
+    callback settings_line_wrapping_toggled();
+    callback settings_default_live_preview_toggled();
+    callback settings_compact_mode_toggled();
 
 
     // Layout Principal
@@ -629,5 +652,28 @@ export component AppWindow inherits Window {
         sticker_selected(icon) => { root.sticker_selected(icon); }
         close_requested => { root.sticker_close_requested(); }
     }
+
+    // Modal Suspenso Flutuante (Configurações)
+    SettingsModal {
+        is_open: root.settings_open;
+        active_tab_index: root.settings_active_tab;
+        font_size: root.settings_font_size;
+        line_wrapping: root.settings_line_wrapping;
+        tab_size: root.settings_tab_size;
+        default_live_preview: root.settings_default_live_preview;
+        compact_mode: root.settings_compact_mode;
+        theme_name: root.settings_theme_name;
+        engine_info: root.settings_engine_info;
+        app_version: root.settings_app_version;
+
+        close_modal => { root.close_settings(); }
+        tab_selected(tab) => { root.settings_tab_selected(tab); }
+        font_size_changed(size) => { root.settings_font_size_changed(size); }
+        tab_size_changed(size) => { root.settings_tab_size_changed(size); }
+        line_wrapping_toggled => { root.settings_line_wrapping_toggled(); }
+        default_live_preview_toggled => { root.settings_default_live_preview_toggled(); }
+        compact_mode_toggled => { root.settings_compact_mode_toggled(); }
+    }
 }
+
 
