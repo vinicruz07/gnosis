@@ -1,0 +1,594 @@
+import { Theme } from "theme.slint";
+
+export struct GrimoireItemData {
+    id: string,
+    name: string,
+    path: string,
+    is_active: bool,
+    is_favorite: bool,
+}
+
+export component GrimoireModal inherits Rectangle {
+    in property <bool> is_open: false;
+    in-out property <int> active_section: 0; // 0: Meus Grimórios, 1: Criar Novo Grimório, 2: Abrir Pasta
+    in property <[GrimoireItemData]> grimoires: [];
+    in-out property <string> new_grimoire_name: "";
+    in-out property <string> new_grimoire_parent_path: "";
+    in-out property <string> open_existing_path: "";
+    in property <string> status_message: "";
+    in property <bool> status_is_error: false;
+
+    // Callbacks de interação
+    callback close_modal();
+    callback select_grimoire(string);
+    callback create_grimoire_requested(string, string);
+    callback open_existing_requested(string);
+    callback section_changed(int);
+
+    background: #000000bb;
+    width: 100%;
+    height: 100%;
+    visible: root.is_open;
+
+    // Clique fora do modal fecha a janela
+    TouchArea {
+        clicked => { root.close_modal(); }
+    }
+
+    // Janela flutuante centralizada
+    Rectangle {
+        width: 740px;
+        height: 520px;
+        background: Theme.surface;
+        border-radius: 12px;
+        border-width: 1px;
+        border-color: Theme.border;
+        x: (parent.width - self.width) / 2;
+        y: (parent.height - self.height) / 2;
+        clip: true;
+
+        // Impede que cliques internos fechem o modal
+        TouchArea {}
+
+        HorizontalLayout {
+            // Coluna Esquerda: Navegação entre Seções
+            Rectangle {
+                width: 220px;
+                background: Theme.sidebar_bg;
+
+                // Divisória vertical
+                Rectangle {
+                    x: parent.width - 1px;
+                    y: 0px;
+                    width: 1px;
+                    height: parent.height;
+                    background: Theme.border;
+                }
+
+                VerticalLayout {
+                    padding: 16px;
+                    spacing: 8px;
+
+                    // Cabeçalho da Sidebar de Grimórios
+                    HorizontalLayout {
+                        spacing: 8px;
+                        padding-bottom: 12px;
+
+                        Text {
+                            text: "📖";
+                            font-size: 18px;
+                            vertical-alignment: center;
+                        }
+                        Text {
+                            text: "Grimórios";
+                            color: Theme.text_primary;
+                            font-size: 15px;
+                            font-weight: 700;
+                            vertical-alignment: center;
+                        }
+                    }
+
+                    // Seção 0: Meus Grimórios
+                    Rectangle {
+                        height: 38px;
+                        border-radius: 6px;
+                        background: root.active_section == 0 ? Theme.surface_active : tab0_area.has-hover ? Theme.surface_hover : transparent;
+
+                        tab0_area := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => { root.section_changed(0); }
+                        }
+
+                        HorizontalLayout {
+                            padding-left: 12px;
+                            padding-right: 12px;
+                            spacing: 10px;
+                            alignment: start;
+
+                            Text {
+                                text: "📚";
+                                font-size: 14px;
+                                vertical-alignment: center;
+                            }
+                            Text {
+                                text: "Meus Grimórios";
+                                color: root.active_section == 0 ? Theme.accent : Theme.text_secondary;
+                                font-size: 13px;
+                                font-weight: root.active_section == 0 ? 600 : 400;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+
+                    // Seção 1: Criar Novo Grimório
+                    Rectangle {
+                        height: 38px;
+                        border-radius: 6px;
+                        background: root.active_section == 1 ? Theme.surface_active : tab1_area.has-hover ? Theme.surface_hover : transparent;
+
+                        tab1_area := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => { root.section_changed(1); }
+                        }
+
+                        HorizontalLayout {
+                            padding-left: 12px;
+                            padding-right: 12px;
+                            spacing: 10px;
+                            alignment: start;
+
+                            Text {
+                                text: "✨";
+                                font-size: 14px;
+                                vertical-alignment: center;
+                            }
+                            Text {
+                                text: "Criar Novo Grimório";
+                                color: root.active_section == 1 ? Theme.accent : Theme.text_secondary;
+                                font-size: 13px;
+                                font-weight: root.active_section == 1 ? 600 : 400;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+
+                    // Seção 2: Abrir Pasta Existente
+                    Rectangle {
+                        height: 38px;
+                        border-radius: 6px;
+                        background: root.active_section == 2 ? Theme.surface_active : tab2_area.has-hover ? Theme.surface_hover : transparent;
+
+                        tab2_area := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => { root.section_changed(2); }
+                        }
+
+                        HorizontalLayout {
+                            padding-left: 12px;
+                            padding-right: 12px;
+                            spacing: 10px;
+                            alignment: start;
+
+                            Text {
+                                text: "📂";
+                                font-size: 14px;
+                                vertical-alignment: center;
+                            }
+                            Text {
+                                text: "Abrir Pasta Local";
+                                color: root.active_section == 2 ? Theme.accent : Theme.text_secondary;
+                                font-size: 13px;
+                                font-weight: root.active_section == 2 ? 600 : 400;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+
+                    // Espaçador vertical
+                    Rectangle {}
+
+                    // Rodapé informativo
+                    Text {
+                        text: "Gnosis Vault System";
+                        color: Theme.text_muted;
+                        font-size: 11px;
+                        horizontal-alignment: center;
+                    }
+                }
+            }
+
+            // Coluna Direita: Painel de Conteúdo
+            Rectangle {
+                horizontal-stretch: 1;
+                background: Theme.surface;
+
+                VerticalLayout {
+                    padding: 24px;
+                    spacing: 16px;
+
+                    // Cabeçalho da Seção com Botão Fechar
+                    HorizontalLayout {
+                        alignment: space-between;
+
+                        VerticalLayout {
+                            spacing: 4px;
+                            Text {
+                                text: root.active_section == 0 ? "Grimórios Conhecidos" :
+                                      root.active_section == 1 ? "Criar Novo Grimório" : "Abrir Pasta como Grimório";
+                                color: Theme.text_primary;
+                                font-size: 18px;
+                                font-weight: 700;
+                            }
+                            Text {
+                                text: root.active_section == 0 ? "Alterne instantaneamente entre seus cofres de conhecimento." :
+                                      root.active_section == 1 ? "Crie uma nova pasta com o nome escolhido para seu cofre." :
+                                      "Selecione uma pasta existente com notas Markdown no seu computador.";
+                                color: Theme.text_muted;
+                                font-size: 12px;
+                            }
+                        }
+
+                        // Botão Fechar ✕
+                        Rectangle {
+                            width: 32px;
+                            height: 32px;
+                            border-radius: 6px;
+                            background: close_touch.has-hover ? Theme.surface_hover : transparent;
+
+                            close_touch := TouchArea {
+                                mouse-cursor: pointer;
+                                clicked => { root.close_modal(); }
+                            }
+
+                            Text {
+                                text: "✕";
+                                color: close_touch.has-hover ? Theme.danger : Theme.text_secondary;
+                                font-size: 14px;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+
+                    // Linha divisória
+                    Rectangle {
+                        height: 1px;
+                        background: Theme.border;
+                    }
+
+                    // Alerta de Status / Erro
+                    if root.status_message != "": Rectangle {
+                        height: 36px;
+                        border-radius: 6px;
+                        background: root.status_is_error ? Theme.danger : Theme.accent;
+
+                        HorizontalLayout {
+                            padding-left: 12px;
+                            padding-right: 12px;
+                            alignment: start;
+
+                            Text {
+                                text: root.status_message;
+                                color: #ffffff;
+                                font-size: 12px;
+                                font-weight: 600;
+                                vertical-alignment: center;
+                            }
+                        }
+                    }
+
+                    // CONTEÚDO SEÇÃO 0: Meus Grimórios
+                    if root.active_section == 0: VerticalLayout {
+                        spacing: 12px;
+
+                        if root.grimoires.length == 0: Rectangle {
+                            height: 120px;
+                            background: Theme.background;
+                            border-radius: 8px;
+                            border-width: 1px;
+                            border-color: Theme.border;
+
+                            VerticalLayout {
+                                alignment: center;
+                                spacing: 8px;
+
+                                Text {
+                                    text: "📚 Nenhum Grimório registrado ainda.";
+                                    color: Theme.text_secondary;
+                                    font-size: 13px;
+                                    horizontal-alignment: center;
+                                }
+                                Text {
+                                    text: "Utilize as opções ao lado para criar ou abrir uma pasta existente.";
+                                    color: Theme.text_muted;
+                                    font-size: 11px;
+                                    horizontal-alignment: center;
+                                }
+                            }
+                        }
+
+                        if root.grimoires.length > 0: Flickable {
+                            vertical-stretch: 1;
+
+                            VerticalLayout {
+                                spacing: 8px;
+                                alignment: start;
+
+                                for item in root.grimoires: Rectangle {
+                                    height: 58px;
+                                    background: item.is_active ? Theme.surface_active : grim_touch.has-hover ? Theme.surface_hover : Theme.background;
+                                    border-radius: 8px;
+                                    border-width: 1px;
+                                    border-color: item.is_active ? Theme.accent : Theme.border;
+
+                                    grim_touch := TouchArea {
+                                        mouse-cursor: pointer;
+                                        clicked => { root.select_grimoire(item.id); }
+                                    }
+
+                                    HorizontalLayout {
+                                        padding-left: 14px;
+                                        padding-right: 14px;
+                                        spacing: 12px;
+                                        alignment: space-between;
+
+                                        HorizontalLayout {
+                                            spacing: 10px;
+                                            alignment: start;
+
+                                            Text {
+                                                text: "📖";
+                                                font-size: 18px;
+                                                vertical-alignment: center;
+                                            }
+
+                                            VerticalLayout {
+                                                alignment: center;
+                                                spacing: 2px;
+
+                                                Text {
+                                                    text: item.name;
+                                                    color: item.is_active ? Theme.accent : Theme.text_primary;
+                                                    font-size: 13px;
+                                                    font-weight: 600;
+                                                }
+                                                Text {
+                                                    text: item.path;
+                                                    color: Theme.text_muted;
+                                                    font-size: 11px;
+                                                    overflow: elide;
+                                                }
+                                            }
+                                        }
+
+                                        HorizontalLayout {
+                                            spacing: 8px;
+                                            alignment: center;
+
+                                            if item.is_active: Rectangle {
+                                                width: 60px;
+                                                height: 24px;
+                                                border-radius: 4px;
+                                                background: Theme.accent;
+
+                                                Text {
+                                                    text: "Ativo";
+                                                    color: #ffffff;
+                                                    font-size: 11px;
+                                                    font-weight: 600;
+                                                    horizontal-alignment: center;
+                                                    vertical-alignment: center;
+                                                }
+                                            }
+
+                                            if !item.is_active: Rectangle {
+                                                width: 60px;
+                                                height: 24px;
+                                                border-radius: 4px;
+                                                background: Theme.surface_active;
+
+                                                Text {
+                                                    text: "Abrir";
+                                                    color: Theme.text_secondary;
+                                                    font-size: 11px;
+                                                    horizontal-alignment: center;
+                                                    vertical-alignment: center;
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // CONTEÚDO SEÇÃO 1: Criar Novo Grimório
+                    if root.active_section == 1: VerticalLayout {
+                        spacing: 16px;
+
+                        // Campo 1: Nome do Grimório
+                        VerticalLayout {
+                            spacing: 6px;
+
+                            Text {
+                                text: "Nome do Grimório:";
+                                color: Theme.text_primary;
+                                font-size: 12px;
+                                font-weight: 600;
+                            }
+
+                            Rectangle {
+                                height: 38px;
+                                border-radius: 6px;
+                                background: Theme.background;
+                                border-width: 1px;
+                                border-color: Theme.border;
+
+                                HorizontalLayout {
+                                    padding-left: 12px;
+                                    padding-right: 12px;
+
+                                    name_input := TextInput {
+                                        text <=> root.new_grimoire_name;
+                                        color: Theme.text_primary;
+                                        font-size: 13px;
+                                        vertical-alignment: center;
+                                    }
+                                }
+                            }
+                        }
+
+                        // Campo 2: Localização (Pasta Pai onde a nova pasta será criada)
+                        VerticalLayout {
+                            spacing: 6px;
+
+                            Text {
+                                text: "Localização (Pasta Pai de Destino):";
+                                color: Theme.text_primary;
+                                font-size: 12px;
+                                font-weight: 600;
+                            }
+
+                            Rectangle {
+                                height: 38px;
+                                border-radius: 6px;
+                                background: Theme.background;
+                                border-width: 1px;
+                                border-color: Theme.border;
+
+                                HorizontalLayout {
+                                    padding-left: 12px;
+                                    padding-right: 12px;
+
+                                    path_input := TextInput {
+                                        text <=> root.new_grimoire_parent_path;
+                                        color: Theme.text_primary;
+                                        font-size: 13px;
+                                        vertical-alignment: center;
+                                    }
+                                }
+                            }
+
+                            Text {
+                                text: "Uma subpasta com o nome do grimório será criada dentro desta localização.";
+                                color: Theme.text_muted;
+                                font-size: 11px;
+                            }
+                        }
+
+                        // Botão Criar Grimório
+                        Rectangle {
+                            height: 42px;
+                            border-radius: 8px;
+                            background: create_touch.has-hover ? Theme.surface_active : Theme.accent;
+
+                            create_touch := TouchArea {
+                                mouse-cursor: pointer;
+                                clicked => {
+                                    root.create_grimoire_requested(root.new_grimoire_name, root.new_grimoire_parent_path);
+                                }
+                            }
+
+                            HorizontalLayout {
+                                alignment: center;
+                                spacing: 8px;
+
+                                Text {
+                                    text: "✨";
+                                    font-size: 14px;
+                                    vertical-alignment: center;
+                                }
+                                Text {
+                                    text: "Criar e Abrir Grimório";
+                                    color: #ffffff;
+                                    font-size: 13px;
+                                    font-weight: 600;
+                                    vertical-alignment: center;
+                                }
+                            }
+                        }
+
+                        Rectangle {}
+                    }
+
+                    // CONTEÚDO SEÇÃO 2: Abrir Pasta Existente
+                    if root.active_section == 2: VerticalLayout {
+                        spacing: 16px;
+
+                        VerticalLayout {
+                            spacing: 6px;
+
+                            Text {
+                                text: "Caminho da Pasta do Grimório:";
+                                color: Theme.text_primary;
+                                font-size: 12px;
+                                font-weight: 600;
+                            }
+
+                            Rectangle {
+                                height: 38px;
+                                border-radius: 6px;
+                                background: Theme.background;
+                                border-width: 1px;
+                                border-color: Theme.border;
+
+                                HorizontalLayout {
+                                    padding-left: 12px;
+                                    padding-right: 12px;
+
+                                    open_input := TextInput {
+                                        text <=> root.open_existing_path;
+                                        color: Theme.text_primary;
+                                        font-size: 13px;
+                                        vertical-alignment: center;
+                                    }
+                                }
+                            }
+
+                            Text {
+                                text: "Informe ou cole o caminho completo da pasta no seu computador.";
+                                color: Theme.text_muted;
+                                font-size: 11px;
+                            }
+                        }
+
+                        // Botão Abrir Pasta
+                        Rectangle {
+                            height: 42px;
+                            border-radius: 8px;
+                            background: open_touch.has-hover ? Theme.surface_active : Theme.accent;
+
+                            open_touch := TouchArea {
+                                mouse-cursor: pointer;
+                                clicked => {
+                                    root.open_existing_requested(root.open_existing_path);
+                                }
+                            }
+
+                            HorizontalLayout {
+                                alignment: center;
+                                spacing: 8px;
+
+                                Text {
+                                    text: "📂";
+                                    font-size: 14px;
+                                    vertical-alignment: center;
+                                }
+                                Text {
+                                    text: "Abrir Grimório Local";
+                                    color: #ffffff;
+                                    font-size: 13px;
+                                    font-weight: 600;
+                                    vertical-alignment: center;
+                                }
+                            }
+                        }
+
+                        Rectangle {}
+                    }
+                }
+            }
+        }
+    }
+}
+

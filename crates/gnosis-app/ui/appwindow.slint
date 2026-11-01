@@ -10,6 +10,8 @@ import { CanvasView, CanvasNodeSlint, CanvasEdgeSlint } from "canvas_view.slint"
 import { SyncModal, PeerData } from "sync_modal.slint";
 import { StickerPickerModal, StickerItemSlint } from "sticker_picker.slint";
 import { SettingsModal } from "settings_modal.slint";
+import { GrimoireModal, GrimoireItemData } from "grimoire_modal.slint";
+export { GrimoireItemData }
 
 
 export component AppWindow inherits Window {
@@ -100,6 +102,16 @@ export component AppWindow inherits Window {
     in property <string> settings_theme_name: "Abyss";
     in property <string> settings_engine_info: "FemtoVG / Software Renderer (Hardware 2015- 60FPS)";
     in property <string> settings_app_version: "0.1.0";
+
+    // Propriedades do Modal de Grimórios (Vaults)
+    in-out property <bool> grimoire_modal_open: false;
+    in-out property <int> grimoire_active_section: 0;
+    in property <[GrimoireItemData]> grimoires_list: [];
+    in-out property <string> grimoire_new_name: "";
+    in-out property <string> grimoire_new_parent_path: "";
+    in-out property <string> grimoire_open_path: "";
+    in property <string> grimoire_status_message: "";
+    in property <bool> grimoire_status_is_error: false;
 
 
     // Propriedades da Barra de Status
@@ -196,6 +208,14 @@ export component AppWindow inherits Window {
     callback settings_line_wrapping_toggled();
     callback settings_default_live_preview_toggled();
     callback settings_compact_mode_toggled();
+
+    // Callbacks do Modal de Grimórios (Vaults)
+    callback open_grimoire_modal();
+    callback close_grimoire_modal();
+    callback grimoire_selected(string);
+    callback create_grimoire_requested(string, string);
+    callback open_existing_grimoire_requested(string);
+    callback grimoire_section_changed(int);
 
 
     // Layout Principal
@@ -708,6 +728,24 @@ export component AppWindow inherits Window {
         line_wrapping_toggled => { root.settings_line_wrapping_toggled(); }
         default_live_preview_toggled => { root.settings_default_live_preview_toggled(); }
         compact_mode_toggled => { root.settings_compact_mode_toggled(); }
+    }
+
+    // Modal Suspenso Flutuante (Grimórios / Vaults)
+    GrimoireModal {
+        is_open: root.grimoire_modal_open;
+        active_section: root.grimoire_active_section;
+        grimoires: root.grimoires_list;
+        new_grimoire_name <=> root.grimoire_new_name;
+        new_grimoire_parent_path <=> root.grimoire_new_parent_path;
+        open_existing_path <=> root.grimoire_open_path;
+        status_message: root.grimoire_status_message;
+        status_is_error: root.grimoire_status_is_error;
+
+        close_modal => { root.close_grimoire_modal(); }
+        select_grimoire(id) => { root.grimoire_selected(id); }
+        create_grimoire_requested(name, path) => { root.create_grimoire_requested(name, path); }
+        open_existing_requested(path) => { root.open_existing_grimoire_requested(path); }
+        section_changed(sec) => { root.grimoire_section_changed(sec); }
     }
 }
 
