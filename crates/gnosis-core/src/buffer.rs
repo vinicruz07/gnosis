@@ -71,6 +71,16 @@ impl NoteBuffer {
         Ok(())
     }
 
+    /// Substitui um intervalo de caracteres entre `start` e `end` por um novo texto em $O(\log N)$.
+    ///
+    /// # Erros
+    /// Retorna `CoreError::IndexOutOfBounds` se os limites forem inválidos ou `start > end`.
+    pub fn replace_range(&mut self, start: usize, end: usize, new_text: &str) -> Result<()> {
+        self.remove(start, end)?;
+        self.insert(start, new_text)?;
+        Ok(())
+    }
+
     /// Obtém uma linha específica como String (0-indexada).
     pub fn line(&self, line_idx: usize) -> Option<String> {
         if line_idx >= self.rope.len_lines() {
@@ -158,6 +168,12 @@ mod tests {
 
         // Remoção
         buf.remove(5, 11)?;
+        assert_eq!(buf.to_string_content(), "Olá, Mundo!");
+
+        // Substituição de intervalo (replace_range)
+        buf.replace_range(5, 10, "Amigo")?;
+        assert_eq!(buf.to_string_content(), "Olá, Amigo!");
+        buf.replace_range(5, 10, "Mundo")?;
         assert_eq!(buf.to_string_content(), "Olá, Mundo!");
 
         // Fatiamento

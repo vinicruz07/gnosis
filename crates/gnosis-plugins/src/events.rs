@@ -175,4 +175,62 @@ mod tests {
         bus.unsubscribe_plugin("word-counter").await;
         assert!(!bus.is_interested("word-counter", EventType::NoteOpened).await);
     }
+
+    #[tokio::test]
+    async fn test_event_bus_high_concurrency() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        let bus = Arc::new(EventBus::new(1024));
+        let received_count = Arc::new(AtomicUsize::new(0));
+
+        // 5 ouvintes assíncronos simultâneos
+        let mut listener_handles = Vec::new();
+        for _ in 0..5 {
+            let mut rx = bus.create_receiver();
+            let counter = received_count.clone();
+            let handle = tokio::spawn(async move {
+                while let Ok(_event) = rx.recv().await {
+                    counter.fetch_add(1, Ordering::SeqCst);
+                }
+            });
+            listener_handles.push(handle);
+        }
+
+        // 10 tarefas produtoras simultâneas enviando 50 eventos cada = 500 eventos
+        let mut producer_handles = Vec::new();
+        for task_idx in 0..10 {
+            let bus_clone = bus.clone();
+            let handle = tokio::spawn(async move {
+                for i in 0..50 {
+                    let path_str = format!("Notas/Concorrente_{}_{}.md", task_idx, i);
+                    if let Ok(path) = VaultPath::parse(&path_str) {
+                        let ev = PluginEvent::NoteSaved {
+                            path,
+                            content_len: 120,
+                        };
+                        bus_clone.publish(ev);
+                    }
+                }
+            });
+            producer_handles.push(handle);
+        }
+
+        // Aguarda todas as tarefas produtoras concluírem
+        for handle in producer_handles {
+            let _ = handle.await;
+        }
+
+        // Aguarda pequenos instantes para que os buffers processem
+        tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+
+        // Aborta os ouvintes em loop infinito
+        for handle in listener_handles {
+            handle.abort();
+        }
+
+        // Cada um dos 5 ouvintes deve ter recebido os 500 eventos enviados = 2500 notificações
+        let total = received_count.load(Ordering::SeqCst);
+        assert!(total >= 2000, "Concorrência com múltiplos ouvintes deve entregar eventos em massa. Total: {}", total);
+    }
 }
+

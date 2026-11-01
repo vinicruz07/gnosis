@@ -19,8 +19,8 @@ pub mod parser;
 pub mod tag;
 pub mod wikilink;
 
-pub use ast::{CalloutKind, MarkdownBlock, MarkdownDoc, TaskItem};
-pub use block_parser::{parse_blocks, parse_document};
+pub use ast::{CalloutKind, MarkdownBlock, MarkdownDoc, SpannedBlock, TaskItem};
+pub use block_parser::{parse_blocks, parse_document, parse_spanned_blocks};
 pub use error::{MarkdownError, Result};
 pub use frontmatter::{parse_frontmatter, update_frontmatter_stickers, Frontmatter};
 pub use math::{MathCacheKey, MathEngine, MathLruCache, MathMode, MathRenderResult, MathStyle};

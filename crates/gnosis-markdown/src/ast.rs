@@ -135,3 +135,16 @@ pub struct MarkdownDoc {
     /// Todas as tags consolidadas (frontmatter + corpo da nota).
     pub all_tags: Vec<String>,
 }
+
+/// Bloco Markdown associado às suas coordenadas de span no texto e conteúdo bruto.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SpannedBlock {
+    /// O bloco sintático abstrato estruturado.
+    pub block: MarkdownBlock,
+    /// Índice inicial do caractere no texto onde o bloco começa.
+    pub span_start: usize,
+    /// Índice final do caractere no texto onde o bloco termina.
+    pub span_end: usize,
+    /// Conteúdo Markdown original exato deste bloco.
+    pub raw_text: String,
+}

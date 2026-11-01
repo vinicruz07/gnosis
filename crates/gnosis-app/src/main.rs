@@ -104,10 +104,13 @@ fn to_slint_ast_blocks(blocks: &[RenderBlockModel]) -> Vec<RenderBlockData> {
     blocks
         .iter()
         .map(|b| RenderBlockData {
+            id: b.id as i32,
             kind: b.kind.as_str().into(),
             text: b.text.as_str().into(),
+            raw_text: b.raw_text.as_str().into(),
             extra: b.extra.as_str().into(),
             is_checked: b.is_checked,
+            is_editing: b.is_editing,
             is_editing_math: b.is_editing_math,
         })
         .collect()

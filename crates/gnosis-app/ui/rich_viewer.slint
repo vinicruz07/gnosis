@@ -1,10 +1,13 @@
 import { Theme } from "theme.slint";
 
 export struct RenderBlockData {
+    id: int,
     kind: string,
     text: string,
+    raw_text: string,
     extra: string,
     is_checked: bool,
+    is_editing: bool,
     is_editing_math: bool,
 }
 

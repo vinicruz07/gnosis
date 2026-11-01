@@ -389,4 +389,45 @@ mod tests {
         // Pode ler, mas ainda não pode escrever
         assert!(reader_vfs.write_file_atomic(&user_note, b"escrever").await.is_err());
     }
+
+    #[tokio::test]
+    async fn test_sandbox_concurrent_tasks_and_panic_resilience() {
+        let sandbox = Arc::new(PluginSandbox::with_default("concurrent-sandbox-plugin"));
+
+        let mut handles = Vec::new();
+
+        // 10 tarefas que executam com sucesso
+        for i in 0..10 {
+            let sb = sandbox.clone();
+            handles.push(tokio::spawn(async move {
+                let res = sb
+                    .execute_safe(move || async move {
+                        tokio::time::sleep(Duration::from_millis(10)).await;
+                        Ok(i * 10)
+                    })
+                    .await;
+                assert!(res.is_ok());
+            }));
+        }
+
+        // 10 tarefas que causam pânico simultaneamente
+        for _ in 0..10 {
+            let sb = sandbox.clone();
+            handles.push(tokio::spawn(async move {
+                let res = sb
+                    .execute_safe(|| async {
+                        panic!("Tentativa intencional de pânico na sandbox em concorrência");
+                        #[allow(unreachable_code)]
+                        Ok(0)
+                    })
+                    .await;
+                assert!(matches!(res, Err(PluginError::PanicIntercepted(_))));
+            }));
+        }
+
+        for h in handles {
+            assert!(h.await.is_ok());
+        }
+    }
 }
+

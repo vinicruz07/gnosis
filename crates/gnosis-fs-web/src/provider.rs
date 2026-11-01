@@ -509,4 +509,44 @@ mod tests {
 
         Ok(())
     }
+
+    #[tokio::test]
+    async fn test_web_fs_concurrency_stress() -> CoreResult<()> {
+        let fs = Arc::new(WebFileSystem::memory_mock("concurrent_mock_vault"));
+
+        let folder = VaultPath::parse("Concorrente")?;
+        fs.create_dir_all(&folder).await?;
+
+        let mut handles = Vec::new();
+        for task_id in 0..10 {
+            let fs_clone = fs.clone();
+            handles.push(tokio::spawn(async move {
+                for i in 0..10 {
+                    let path = VaultPath::parse(&format!("Concorrente/Nota_{}_{}.md", task_id, i))
+                        .map_err(|e| CoreError::Io(e.to_string()))?;
+                    let content = format!("Conteudo da task {} iteracao {}", task_id, i);
+                    fs_clone.write_file_atomic(&path, content.as_bytes()).await?;
+
+                    let read_back = fs_clone.read_file(&path).await?;
+                    assert_eq!(read_back, content.as_bytes());
+                }
+                Ok::<(), CoreError>(())
+            }));
+        }
+
+        for h in handles {
+            let res = h.await;
+            assert!(res.is_ok());
+            if let Ok(inner) = res {
+                assert!(inner.is_ok());
+            }
+        }
+
+        let all_files = fs.list_dir(&folder).await?;
+        assert_eq!(all_files.len(), 100);
+
+        Ok(())
+    }
 }
+
+
