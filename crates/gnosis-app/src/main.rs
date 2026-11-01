@@ -1010,6 +1010,102 @@ fn main() {
         });
     }
 
+    // Callback: Pressionar Enter no bloco (cria novo bloco abaixo e foca)
+    {
+        let app_weak = app_weak.clone();
+        let editor_arc = Arc::clone(&editor_arc);
+        let state_arc = Arc::clone(&state_arc);
+
+        app.on_block_enter_pressed(move |id, current_text| {
+            if let Ok(mut ed) = editor_arc.lock() {
+                ed.split_or_insert_block_below(id as usize, current_text.as_str());
+                let updated_content = ed.content();
+
+                if let Ok(mut st) = state_arc.lock() {
+                    st.active_note_content = updated_content.clone();
+                }
+
+                let ast = to_slint_ast_blocks(&ed.generate_render_blocks());
+                if let Some(w) = app_weak.upgrade() {
+                    w.set_active_note_content(updated_content.as_str().into());
+                    w.set_ast_blocks(ModelRc::new(VecModel::from(ast)));
+                }
+            }
+        });
+    }
+
+    // Callback: Pressionar Backspace / Unir em bloco vazio
+    {
+        let app_weak = app_weak.clone();
+        let editor_arc = Arc::clone(&editor_arc);
+        let state_arc = Arc::clone(&state_arc);
+
+        app.on_block_backspace_pressed(move |id| {
+            if let Ok(mut ed) = editor_arc.lock() {
+                ed.delete_empty_block_and_merge_previous(id as usize);
+                let updated_content = ed.content();
+
+                if let Ok(mut st) = state_arc.lock() {
+                    st.active_note_content = updated_content.clone();
+                }
+
+                let ast = to_slint_ast_blocks(&ed.generate_render_blocks());
+                if let Some(w) = app_weak.upgrade() {
+                    w.set_active_note_content(updated_content.as_str().into());
+                    w.set_ast_blocks(ModelRc::new(VecModel::from(ast)));
+                }
+            }
+        });
+    }
+
+    // Callback: Navegação para bloco anterior (↑)
+    {
+        let app_weak = app_weak.clone();
+        let editor_arc = Arc::clone(&editor_arc);
+        let state_arc = Arc::clone(&state_arc);
+
+        app.on_block_navigate_up(move |_id, current_text| {
+            if let Ok(mut ed) = editor_arc.lock() {
+                ed.navigate_to_previous_block_with_save(Some(current_text.as_str()));
+                let updated_content = ed.content();
+
+                if let Ok(mut st) = state_arc.lock() {
+                    st.active_note_content = updated_content.clone();
+                }
+
+                let ast = to_slint_ast_blocks(&ed.generate_render_blocks());
+                if let Some(w) = app_weak.upgrade() {
+                    w.set_active_note_content(updated_content.as_str().into());
+                    w.set_ast_blocks(ModelRc::new(VecModel::from(ast)));
+                }
+            }
+        });
+    }
+
+    // Callback: Navegação para próximo bloco (↓)
+    {
+        let app_weak = app_weak.clone();
+        let editor_arc = Arc::clone(&editor_arc);
+        let state_arc = Arc::clone(&state_arc);
+
+        app.on_block_navigate_down(move |_id, current_text| {
+            if let Ok(mut ed) = editor_arc.lock() {
+                ed.navigate_to_next_block_with_save(Some(current_text.as_str()));
+                let updated_content = ed.content();
+
+                if let Ok(mut st) = state_arc.lock() {
+                    st.active_note_content = updated_content.clone();
+                }
+
+                let ast = to_slint_ast_blocks(&ed.generate_render_blocks());
+                if let Some(w) = app_weak.upgrade() {
+                    w.set_active_note_content(updated_content.as_str().into());
+                    w.set_ast_blocks(ModelRc::new(VecModel::from(ast)));
+                }
+            }
+        });
+    }
+
     // Callback: Alternar barra lateral
     {
         let app_weak = app_weak.clone();

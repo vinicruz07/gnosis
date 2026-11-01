@@ -114,6 +114,110 @@ impl EditorController {
         self.editing_math_index = None;
     }
 
+    /// Divide o bloco atual ou insere um novo bloco logo abaixo e transfere o foco de edição para ele.
+    pub fn split_or_insert_block_below(&mut self, block_id: usize, current_text: &str) -> Option<usize> {
+        let blocks = self.generate_render_blocks();
+        let target = blocks.into_iter().find(|b| b.id == block_id)?;
+
+        let trimmed_text = current_text.trim_end();
+        let _ = self.buffer.replace_range(target.span_start, target.span_end, trimmed_text);
+
+        let new_char_len = trimmed_text.chars().count();
+        let insert_pos = target.span_start + new_char_len;
+
+        let next_snippet = if target.kind == "task" {
+            "\n- [ ] Nova tarefa"
+        } else if target.kind == "quote" {
+            "\n> Nova citação"
+        } else {
+            "\n\nNovo parágrafo"
+        };
+
+        let _ = self.buffer.insert(insert_pos, next_snippet);
+
+        let new_blocks = self.generate_render_blocks();
+        let next_id = (block_id + 1).min(new_blocks.len().saturating_sub(1));
+        self.active_editing_block_id = Some(next_id);
+        Some(next_id)
+    }
+
+    /// Remove um bloco vazio ou indesejado e transfere o foco para o bloco anterior.
+    pub fn delete_empty_block_and_merge_previous(&mut self, block_id: usize) -> Option<usize> {
+        let blocks = self.generate_render_blocks();
+        if blocks.is_empty() {
+            return None;
+        }
+
+        let target_idx = blocks.iter().position(|b| b.id == block_id)?;
+        let target = &blocks[target_idx];
+
+        let delete_start = if target_idx > 0 {
+            blocks[target_idx - 1].span_end
+        } else {
+            target.span_start
+        };
+        let delete_end = target.span_end;
+
+        if delete_end >= delete_start {
+            let _ = self.buffer.replace_range(delete_start, delete_end, "");
+        }
+
+        let prev_id = if target_idx > 0 {
+            Some(blocks[target_idx - 1].id)
+        } else {
+            None
+        };
+
+        self.active_editing_block_id = prev_id;
+        prev_id
+    }
+
+    /// Move o foco de edição para o bloco anterior, se existir.
+    pub fn navigate_to_previous_block(&mut self) -> Option<usize> {
+        let blocks = self.generate_render_blocks();
+        let current_id = self.active_editing_block_id?;
+        let current_idx = blocks.iter().position(|b| b.id == current_id)?;
+        if current_idx > 0 {
+            let prev_id = blocks[current_idx - 1].id;
+            self.active_editing_block_id = Some(prev_id);
+            Some(prev_id)
+        } else {
+            None
+        }
+    }
+
+    /// Move o foco de edição para o próximo bloco, se existir.
+    pub fn navigate_to_next_block(&mut self) -> Option<usize> {
+        let blocks = self.generate_render_blocks();
+        let current_id = self.active_editing_block_id?;
+        let current_idx = blocks.iter().position(|b| b.id == current_id)?;
+        if current_idx + 1 < blocks.len() {
+            let next_id = blocks[current_idx + 1].id;
+            self.active_editing_block_id = Some(next_id);
+            Some(next_id)
+        } else {
+            None
+        }
+    }
+
+    /// Salva o bloco atual e move o foco para o bloco anterior.
+    pub fn navigate_to_previous_block_with_save(&mut self, current_text: Option<&str>) -> Option<usize> {
+        if let (Some(cur_id), Some(text)) = (self.active_editing_block_id, current_text) {
+            self.apply_block_edit(cur_id, text);
+            self.active_editing_block_id = Some(cur_id);
+        }
+        self.navigate_to_previous_block()
+    }
+
+    /// Salva o bloco atual e move o foco para o próximo bloco.
+    pub fn navigate_to_next_block_with_save(&mut self, current_text: Option<&str>) -> Option<usize> {
+        if let (Some(cur_id), Some(text)) = (self.active_editing_block_id, current_text) {
+            self.apply_block_edit(cur_id, text);
+            self.active_editing_block_id = Some(cur_id);
+        }
+        self.navigate_to_next_block()
+    }
+
     /// Inicia o modo interativo estilo Word para edição de fórmula matemática.
     pub fn start_editing_math(&mut self, block_index: usize) {
         self.editing_math_index = Some(block_index);
@@ -600,5 +704,52 @@ fn main() { println!("Gnosis"); }
         controller.apply_block_edit(2, "| Item | Preço |\n|---|---|\n| Caderno | 25 |");
         assert!(controller.content().contains("Caderno"));
         assert!(controller.content().contains("25"));
+    }
+
+    #[test]
+    fn test_live_preview_flow_enter_backspace_and_navigation() {
+        let markdown = "# Título Principal\n\nPrimeiro parágrafo de texto.";
+        let mut controller = EditorController::new("Nota.md", markdown);
+
+        let initial_blocks = controller.generate_render_blocks();
+        assert_eq!(initial_blocks.len(), 2);
+
+        // Foca no bloco 0 (título)
+        controller.start_editing_block(0);
+        assert_eq!(controller.active_editing_block_id, Some(0));
+
+        // Pressiona Enter no bloco 0: insere novo parágrafo abaixo e foca nele
+        let next_id = controller.split_or_insert_block_below(0, "# Título Editado");
+        assert_eq!(next_id, Some(1));
+        assert_eq!(controller.active_editing_block_id, Some(1));
+
+        let blocks_after_enter = controller.generate_render_blocks();
+        assert_eq!(blocks_after_enter.len(), 3);
+        assert_eq!(blocks_after_enter[0].raw_text, "# Título Editado");
+        assert_eq!(blocks_after_enter[1].raw_text, "Novo parágrafo");
+        assert_eq!(blocks_after_enter[2].raw_text, "Primeiro parágrafo de texto.");
+
+        // Modifica o bloco 1 e navega para cima com salvamento automático
+        let prev_id = controller.navigate_to_previous_block_with_save(Some("Parágrafo intermediário digitado."));
+        assert_eq!(prev_id, Some(0));
+        assert_eq!(controller.active_editing_block_id, Some(0));
+        assert!(controller.content().contains("Parágrafo intermediário digitado."));
+
+        // Navega para baixo para o bloco 1
+        let down_id = controller.navigate_to_next_block();
+        assert_eq!(down_id, Some(1));
+        assert_eq!(controller.active_editing_block_id, Some(1));
+
+        // Insere mais um bloco abaixo do bloco 1
+        let third_id = controller.split_or_insert_block_below(1, "Parágrafo intermediário digitado.");
+        assert_eq!(third_id, Some(2));
+        assert_eq!(controller.active_editing_block_id, Some(2));
+        assert_eq!(controller.generate_render_blocks().len(), 4);
+
+        // Deleta o bloco 2 com backspace/unir
+        let merged_id = controller.delete_empty_block_and_merge_previous(2);
+        assert_eq!(merged_id, Some(1));
+        assert_eq!(controller.active_editing_block_id, Some(1));
+        assert_eq!(controller.generate_render_blocks().len(), 3);
     }
 }

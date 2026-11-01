@@ -20,6 +20,10 @@ export component RichViewer inherits Rectangle {
     callback block_clicked(int);
     callback block_applied(int, string);
     callback block_cancelled(int);
+    callback block_enter_pressed(int, string);
+    callback block_backspace_pressed(int);
+    callback block_navigate_up(int, string);
+    callback block_navigate_down(int, string);
 
     background: Theme.background;
 
@@ -32,7 +36,7 @@ export component RichViewer inherits Rectangle {
             alignment: start;
 
             for block[idx] in root.blocks: Rectangle {
-                // Modo Edição In-Place para blocos textuais ativos (H1-H6, Parágrafo, Callout, Citação)
+                // Modo Edição In-Place para blocos textuais ativos (H1-H6, Parágrafo, Callout, Citação, Tarefas, Tabelas, Código)
                 if (block.is_editing && block.kind != "math"): Rectangle {
                     background: Theme.surface;
                     border-radius: 6px;
@@ -52,20 +56,111 @@ export component RichViewer inherits Rectangle {
                             wrap: word-wrap;
 
                             accepted => {
-                                root.block_applied(block.id, self.text);
+                                root.block_enter_pressed(block.id, self.text);
                             }
                         }
 
                         HorizontalLayout {
                             alignment: space-between;
 
-                            Text {
-                                text: "Dica: Pressione Enter ou ✓ para aplicar";
-                                color: Theme.text_muted;
-                                font-size: 10px;
-                                vertical-alignment: center;
+                            // Ferramentas de navegação contínua por bloco (Live Preview Flow)
+                            HorizontalLayout {
+                                spacing: 6px;
+
+                                // Botão Navegar Bloco Anterior (↑)
+                                Rectangle {
+                                    height: 22px;
+                                    border-radius: 4px;
+                                    background: touch_bprev.has-hover ? Theme.surface_hover : transparent;
+
+                                    HorizontalLayout {
+                                        padding-left: 6px;
+                                        padding-right: 6px;
+                                        alignment: center;
+                                        Text {
+                                            text: "↑ Anterior";
+                                            color: Theme.text_muted;
+                                            font-size: 11px;
+                                            vertical-alignment: center;
+                                        }
+                                    }
+
+                                    touch_bprev := TouchArea {
+                                        clicked => { root.block_navigate_up(block.id, block_input.text); }
+                                    }
+                                }
+
+                                // Botão Navegar Próximo Bloco (↓)
+                                Rectangle {
+                                    height: 22px;
+                                    border-radius: 4px;
+                                    background: touch_bnext.has-hover ? Theme.surface_hover : transparent;
+
+                                    HorizontalLayout {
+                                        padding-left: 6px;
+                                        padding-right: 6px;
+                                        alignment: center;
+                                        Text {
+                                            text: "↓ Próximo";
+                                            color: Theme.text_muted;
+                                            font-size: 11px;
+                                            vertical-alignment: center;
+                                        }
+                                    }
+
+                                    touch_bnext := TouchArea {
+                                        clicked => { root.block_navigate_down(block.id, block_input.text); }
+                                    }
+                                }
+
+                                // Botão Novo Bloco Abaixo (Enter)
+                                Rectangle {
+                                    height: 22px;
+                                    border-radius: 4px;
+                                    background: touch_benter.has-hover ? Theme.surface_hover : transparent;
+
+                                    HorizontalLayout {
+                                        padding-left: 6px;
+                                        padding-right: 6px;
+                                        alignment: center;
+                                        Text {
+                                            text: "↵ Novo Bloco";
+                                            color: Theme.accent;
+                                            font-size: 11px;
+                                            vertical-alignment: center;
+                                        }
+                                    }
+
+                                    touch_benter := TouchArea {
+                                        clicked => { root.block_enter_pressed(block.id, block_input.text); }
+                                    }
+                                }
+
+                                // Botão Unir / Deletar Bloco Vazio (Backspace)
+                                Rectangle {
+                                    height: 22px;
+                                    border-radius: 4px;
+                                    background: touch_bdel.has-hover ? #450a0a : transparent;
+
+                                    HorizontalLayout {
+                                        padding-left: 6px;
+                                        padding-right: 6px;
+                                        alignment: center;
+                                        Text {
+                                            text: "⌫ Deletar / Unir";
+                                            color: #f38ba8;
+                                            font-size: 11px;
+                                            vertical-alignment: center;
+                                        }
+                                    }
+
+                                    touch_bdel := TouchArea {
+                                        clicked => { root.block_backspace_pressed(block.id); }
+                                    }
+                                }
                             }
 
+                            // Ações de confirmação
                             HorizontalLayout {
                                 spacing: 6px;
 
@@ -93,7 +188,7 @@ export component RichViewer inherits Rectangle {
                                     }
                                 }
 
-                                // Botão Aplicar (✓)
+                                // Botão Concluir / Aplicar (✓)
                                 Rectangle {
                                     height: 22px;
                                     border-radius: 4px;
@@ -105,7 +200,7 @@ export component RichViewer inherits Rectangle {
                                         alignment: center;
 
                                         Text {
-                                            text: "✓ Aplicar";
+                                            text: "✓ Concluir";
                                             color: #11111b;
                                             font-size: 11px;
                                             font-weight: 700;
