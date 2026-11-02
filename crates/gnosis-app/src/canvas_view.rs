@@ -572,4 +572,141 @@ mod tests {
         // Limpeza
         let _ = fs::remove_dir_all(&temp_dir);
     }
+
+    #[test]
+    fn test_membrane_full_lifecycle_and_all_node_types() {
+        use gnosis_core::canvas::{CanvasEdge, CanvasNode, FileNode, GroupNode, LinkNode, NodeSide, TextNode};
+
+        let temp_dir = std::env::temp_dir().join(format!("gnosis_test_membrane_lifecycle_{}", std::process::id()));
+        let _ = fs::create_dir_all(&temp_dir);
+        let membrana_path = temp_dir.join("Cosmologia.membrana");
+
+        // Monta um CanvasData completo com os 4 tipos de nós da especificação
+        let mut data = CanvasData::new();
+        data.add_node(CanvasNode::Text(TextNode {
+            id: "n_text".to_string(),
+            x: 100,
+            y: 150,
+            width: 250,
+            height: 120,
+            color: Some("#10B981".to_string()),
+            text: "Princípio Hermético do Ritmo".to_string(),
+            extra: Default::default(),
+        }));
+
+        data.add_node(CanvasNode::File(FileNode {
+            id: "n_file".to_string(),
+            x: 450,
+            y: 150,
+            width: 300,
+            height: 200,
+            color: Some("#6366F1".to_string()),
+            file: "Grimorio/Alquimia.md".to_string(),
+            subpath: Some("#Transmutacao".to_string()),
+            extra: Default::default(),
+        }));
+
+        data.add_node(CanvasNode::Link(LinkNode {
+            id: "n_link".to_string(),
+            x: 100,
+            y: 350,
+            width: 280,
+            height: 90,
+            color: None,
+            url: "https://gnosis.app/docs".to_string(),
+            extra: Default::default(),
+        }));
+
+        data.add_node(CanvasNode::Group(GroupNode {
+            id: "n_group".to_string(),
+            x: 50,
+            y: 50,
+            width: 750,
+            height: 450,
+            color: Some("#F59E0B".to_string()),
+            label: Some("Esfera Celestial".to_string()),
+            background: None,
+            background_style: None,
+            extra: Default::default(),
+        }));
+
+        // Adiciona aresta conectando n_text -> n_file com lados e rótulo
+        data.add_edge(CanvasEdge {
+            id: "e_transmutar".to_string(),
+            from_node: "n_text".to_string(),
+            from_side: Some(NodeSide::Right),
+            from_end: None,
+            to_node: "n_file".to_string(),
+            to_side: Some(NodeSide::Left),
+            to_end: Some(EdgeEnd::Arrow),
+            color: Some("#8B5CF6".to_string()),
+            label: Some("inspira".to_string()),
+            extra: Default::default(),
+        });
+
+        assert_eq!(data.node_count(), 4);
+        assert_eq!(data.edge_count(), 1);
+
+        // Instancia o controller e salva no arquivo .membrana
+        let mut ctrl = CanvasViewController::new(data);
+        ctrl.set_active_file_path(&membrana_path);
+        let save_res = ctrl.save_to_disk();
+        assert!(save_res.is_ok(), "Salvamento inicial de membrana falhou: {:?}", save_res);
+        assert!(membrana_path.exists());
+
+        // Carrega em uma instância completamente nova
+        let mut reloaded = CanvasViewController::new(CanvasData::new());
+        let load_res = reloaded.load_from_file(&membrana_path);
+        assert!(load_res.is_ok(), "Carregamento de membrana falhou: {:?}", load_res);
+
+        // Validação estrita de integridade dos 4 nós
+        assert_eq!(reloaded.canvas_data.node_count(), 4);
+        assert_eq!(reloaded.canvas_data.edge_count(), 1);
+
+        let n1 = reloaded.canvas_data.get_node("n_text");
+        assert!(matches!(n1, Some(CanvasNode::Text(t)) if t.text == "Princípio Hermético do Ritmo" && t.x == 100));
+
+        let n2 = reloaded.canvas_data.get_node("n_file");
+        assert!(matches!(n2, Some(CanvasNode::File(f)) if f.file == "Grimorio/Alquimia.md" && f.subpath.as_deref() == Some("#Transmutacao")));
+
+        let n3 = reloaded.canvas_data.get_node("n_link");
+        assert!(matches!(n3, Some(CanvasNode::Link(l)) if l.url == "https://gnosis.app/docs"));
+
+        let n4 = reloaded.canvas_data.get_node("n_group");
+        assert!(matches!(n4, Some(CanvasNode::Group(g)) if g.label.as_deref() == Some("Esfera Celestial") && g.width == 750));
+
+        let edge = &reloaded.canvas_data.edges[0];
+        assert_eq!(edge.from_node, "n_text");
+        assert_eq!(edge.to_node, "n_file");
+        assert_eq!(edge.label.as_deref(), Some("inspira"));
+
+        // Projeção visual para a interface Slint
+        let (visual_nodes, visual_edges) = reloaded.to_visual_models();
+        assert_eq!(visual_nodes.len(), 4);
+        assert_eq!(visual_edges.len(), 1);
+        assert!(visual_edges[0].has_arrow);
+        assert_eq!(visual_edges[0].label, "inspira");
+
+        // Limpeza
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_membrane_corrupted_json_resilience() {
+        let temp_dir = std::env::temp_dir().join(format!("gnosis_test_membrane_corrupted_{}", std::process::id()));
+        let _ = fs::create_dir_all(&temp_dir);
+        let corrupted_file = temp_dir.join("Corrompido.membrana");
+
+        // Grava JSON truncado e inválido
+        let _ = fs::write(&corrupted_file, "{ \"nodes\": [ { \"id\": \"quebrado\", \"type\": ");
+
+        let mut ctrl = CanvasViewController::new(CanvasData::new());
+        let res = ctrl.load_from_file(&corrupted_file);
+
+        // Deve retornar Err sem pânico e sem alterar os nós existentes
+        assert!(res.is_err());
+        assert_eq!(ctrl.canvas_data.node_count(), 0);
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
 }
