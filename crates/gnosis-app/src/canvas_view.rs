@@ -11,6 +11,8 @@
 //! - Zero pânicos em tempo de execução (`clippy::unwrap_used`, `clippy::expect_used`).
 
 use std::collections::HashMap;
+use std::fs;
+use std::path::{Path, PathBuf};
 use gnosis_core::canvas::{
     CanvasData, CanvasEdge, CanvasNode, EdgeEnd, FileNode, GroupNode, NodeSide, TextNode,
 };
@@ -47,13 +49,15 @@ pub struct CanvasEdgeVisual {
     pub has_arrow: bool,
 }
 
-/// Orquestrador de visualização do Canvas 2D infinito.
+/// Orquestrador de visualização e persistência do Canvas/Membrana 2D infinito.
 pub struct CanvasViewController {
     pub canvas_data: CanvasData,
     pub camera_x: f32,
     pub camera_y: f32,
     pub zoom: f32,
     pub selected_node_id: Option<String>,
+    pub active_file_path: Option<PathBuf>,
+    pub is_modified: bool,
 }
 
 impl CanvasViewController {
@@ -65,6 +69,8 @@ impl CanvasViewController {
             camera_y: 150.0,
             zoom: 1.0,
             selected_node_id: None,
+            active_file_path: None,
+            is_modified: false,
         }
     }
 
@@ -122,6 +128,91 @@ impl CanvasViewController {
         });
 
         Self::new(data)
+    }
+
+    /// Carrega dados de membrana a partir de um arquivo no disco (.canvas ou .membrana).
+    pub fn load_from_file(&mut self, path: &Path) -> Result<(), String> {
+        if !path.exists() {
+            // Se o arquivo ainda não existir, inicializa canvas limpo com o path associado
+            self.canvas_data = CanvasData::new();
+            self.active_file_path = Some(path.to_path_buf());
+            self.is_modified = false;
+            return Ok(());
+        }
+
+        let raw = fs::read_to_string(path)
+            .map_err(|e| format!("Falha ao ler arquivo de membrana {}: {}", path.display(), e))?;
+
+        if raw.trim().is_empty() {
+            self.canvas_data = CanvasData::new();
+        } else {
+            self.canvas_data = CanvasData::from_json(&raw)
+                .map_err(|e| format!("Falha no parse do arquivo de membrana {}: {}", path.display(), e))?;
+        }
+
+        self.active_file_path = Some(path.to_path_buf());
+        self.is_modified = false;
+        Ok(())
+    }
+
+    /// Carrega dados de membrana a partir de uma string JSON.
+    pub fn load_from_json(&mut self, json_str: &str) -> Result<(), String> {
+        if json_str.trim().is_empty() {
+            self.canvas_data = CanvasData::new();
+        } else {
+            self.canvas_data = CanvasData::from_json(json_str)
+                .map_err(|e| format!("Falha no parse do JSON da membrana: {}", e))?;
+        }
+        self.is_modified = false;
+        Ok(())
+    }
+
+    /// Salva os dados da membrana no disco atomicamente preservando rigorosamente o caminho e a extensão original.
+    pub fn save_to_disk(&mut self) -> Result<(), String> {
+        let Some(ref target_path) = self.active_file_path else {
+            return Ok(());
+        };
+
+        let json = self.canvas_data.to_json_pretty()
+            .map_err(|e| format!("Falha ao serializar membrana para JSON: {}", e))?;
+
+        let parent = target_path.parent().unwrap_or_else(|| Path::new("."));
+        if !parent.exists() {
+            let _ = fs::create_dir_all(parent);
+        }
+
+        let temp_filename = format!(
+            ".{}_{}.tmp",
+            target_path.file_name().and_then(|n| n.to_str()).unwrap_or("membrane"),
+            std::process::id()
+        );
+        let temp_path = parent.join(temp_filename);
+
+        if let Err(e) = fs::write(&temp_path, &json) {
+            let _ = fs::remove_file(&temp_path);
+            return Err(format!("Falha na gravação do arquivo temporário {}: {}", temp_path.display(), e));
+        }
+
+        if let Err(e) = fs::rename(&temp_path, target_path) {
+            if let Err(e_write) = fs::write(target_path, &json) {
+                let _ = fs::remove_file(&temp_path);
+                return Err(format!("Falha ao salvar membrana em {}: {} (fallback: {})", target_path.display(), e, e_write));
+            }
+            let _ = fs::remove_file(&temp_path);
+        }
+
+        self.is_modified = false;
+        Ok(())
+    }
+
+    /// Retorna o caminho do arquivo ativo de membrana, se houver.
+    pub fn active_file_path(&self) -> Option<&Path> {
+        self.active_file_path.as_deref()
+    }
+
+    /// Define o caminho ativo de arquivo.
+    pub fn set_active_file_path(&mut self, path: impl Into<PathBuf>) {
+        self.active_file_path = Some(path.into());
     }
 
     /// Desloca a câmera 2D (pan).
@@ -192,6 +283,7 @@ impl CanvasViewController {
             let current_x = node.x();
             let current_y = node.y();
             node.set_position(current_x + world_dx, current_y + world_dy);
+            self.is_modified = true;
         }
     }
 
@@ -216,6 +308,7 @@ impl CanvasViewController {
         }));
 
         self.selected_node_id = Some(id.clone());
+        self.is_modified = true;
         id
     }
 
@@ -240,6 +333,7 @@ impl CanvasViewController {
         }));
 
         self.selected_node_id = Some(id.clone());
+        self.is_modified = true;
         id
     }
 
@@ -249,6 +343,7 @@ impl CanvasViewController {
         let mut edge = CanvasEdge::new(&edge_id, from_id, to_id);
         edge.label = label;
         self.canvas_data.add_edge(edge);
+        self.is_modified = true;
         edge_id
     }
 
@@ -256,6 +351,7 @@ impl CanvasViewController {
     pub fn delete_selected(&mut self) -> Option<String> {
         if let Some(id) = self.selected_node_id.take() {
             self.canvas_data.remove_node(&id);
+            self.is_modified = true;
             Some(id)
         } else {
             None
@@ -417,5 +513,63 @@ mod tests {
         assert_eq!(edge.from_node, "node_welcome");
         assert_eq!(edge.to_node, "node_note_arch");
         assert!(edge.has_arrow);
+    }
+
+    #[test]
+    fn test_membrane_io_load_and_atomic_save_dual_format() {
+        let temp_dir = std::env::temp_dir().join(format!("gnosis_test_membrane_io_{}", std::process::id()));
+        let _ = fs::create_dir_all(&temp_dir);
+
+        // 1. Teste com arquivo .canvas (Obsidian JSON Canvas interoperável)
+        let canvas_file = temp_dir.join("Diagrama.canvas");
+        let initial_json = r#"{
+            "nodes": [
+                {"id": "c1", "type": "text", "x": 10, "y": 20, "width": 100, "height": 50, "text": "Ideia Inicial"}
+            ],
+            "edges": []
+        }"#;
+        let _ = fs::write(&canvas_file, initial_json);
+
+        let mut ctrl = CanvasViewController::new(CanvasData::new());
+        let load_res = ctrl.load_from_file(&canvas_file);
+        assert!(load_res.is_ok());
+
+        assert_eq!(ctrl.canvas_data.node_count(), 1);
+        assert_eq!(ctrl.active_file_path(), Some(canvas_file.as_path()));
+        assert!(!ctrl.is_modified);
+
+        // Mutação e gravação contínua
+        let _new_id = ctrl.add_text_card("Segundo Card");
+        assert!(ctrl.is_modified);
+        let save_res = ctrl.save_to_disk();
+        assert!(save_res.is_ok());
+        assert!(!ctrl.is_modified);
+
+        // Validação no disco rígido: deve permanecer exatamente com extensão .canvas
+        assert!(canvas_file.exists());
+        if let Ok(saved_content) = fs::read_to_string(&canvas_file) {
+            assert!(saved_content.contains("Ideia Inicial"));
+            assert!(saved_content.contains("Segundo Card"));
+        } else {
+            panic!("Falha ao ler arquivo salvo {}", canvas_file.display());
+        }
+
+        // 2. Teste com arquivo .membrana (Gnosis Native Pergaminho)
+        let membrana_file = temp_dir.join("Pergaminho_Arcano.membrana");
+        let mut ctrl_mem = CanvasViewController::new(CanvasData::new());
+        ctrl_mem.set_active_file_path(&membrana_file);
+        let _id_m1 = ctrl_mem.add_text_card("Sabedoria Antiga");
+        let save_mem_res = ctrl_mem.save_to_disk();
+        assert!(save_mem_res.is_ok());
+
+        assert!(membrana_file.exists());
+        let mut reloaded_ctrl = CanvasViewController::new(CanvasData::new());
+        let reload_res = reloaded_ctrl.load_from_file(&membrana_file);
+        assert!(reload_res.is_ok());
+        assert_eq!(reloaded_ctrl.canvas_data.node_count(), 1);
+        assert_eq!(reloaded_ctrl.active_file_path(), Some(membrana_file.as_path()));
+
+        // Limpeza
+        let _ = fs::remove_dir_all(&temp_dir);
     }
 }

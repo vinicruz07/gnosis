@@ -697,6 +697,7 @@ fn main() {
         app.on_canvas_node_dragged(move |node_id, dx, dy| {
             if let Ok(mut cc) = canvas_arc.lock() {
                 cc.move_node(node_id.as_str(), dx, dy);
+                let _ = cc.save_to_disk();
                 if let Some(w) = app_weak.upgrade() {
                     let (nodes, edges) = cc.to_visual_models();
                     w.set_canvas_nodes(ModelRc::new(VecModel::from(to_slint_canvas_nodes(&nodes))));
@@ -851,6 +852,7 @@ fn main() {
         app.on_canvas_add_text_requested(move || {
             if let Ok(mut cc) = canvas_arc.lock() {
                 let id = cc.add_text_card("Nova anotação de ideia no Canvas...");
+                let _ = cc.save_to_disk();
                 if let Some(w) = app_weak.upgrade() {
                     let (nodes, edges) = cc.to_visual_models();
                     w.set_canvas_nodes(ModelRc::new(VecModel::from(to_slint_canvas_nodes(&nodes))));
@@ -869,6 +871,7 @@ fn main() {
         app.on_canvas_add_note_requested(move || {
             if let Ok(mut cc) = canvas_arc.lock() {
                 let id = cc.add_file_card("01_Projetos/Rust/Gnosis Core.md");
+                let _ = cc.save_to_disk();
                 if let Some(w) = app_weak.upgrade() {
                     let (nodes, edges) = cc.to_visual_models();
                     w.set_canvas_nodes(ModelRc::new(VecModel::from(to_slint_canvas_nodes(&nodes))));
@@ -887,6 +890,7 @@ fn main() {
         app.on_canvas_delete_selected_requested(move || {
             if let Ok(mut cc) = canvas_arc.lock() {
                 cc.delete_selected();
+                let _ = cc.save_to_disk();
                 if let Some(w) = app_weak.upgrade() {
                     let (nodes, edges) = cc.to_visual_models();
                     w.set_canvas_nodes(ModelRc::new(VecModel::from(to_slint_canvas_nodes(&nodes))));
@@ -1244,6 +1248,7 @@ fn main() {
         let tab_arc = Arc::clone(&tab_arc);
         let editor_arc = Arc::clone(&editor_arc);
         let canvas_arc = Arc::clone(&canvas_arc);
+        let grimoire_arc = Arc::clone(&grimoire_arc);
         app.on_note_selected(move |note_path| {
             let note_str = note_path.as_str();
             let kind = gnosis_core::path::DocumentKind::from_path_str(note_str);
@@ -1273,6 +1278,19 @@ fn main() {
                     icon_opt = Some(st.active_note_icon.clone());
                 } else if is_membrane {
                     icon_opt = Some(kind.default_icon().to_string());
+                }
+            }
+
+            if is_membrane {
+                if let Ok(gm) = grimoire_arc.lock() {
+                    if let Some(active) = gm.active_grimoire() {
+                        let full_path = active.path.join(note_str);
+                        if let Ok(mut cc) = canvas_arc.lock() {
+                            if let Err(e) = cc.load_from_file(&full_path) {
+                                tracing::warn!("Falha ao carregar membrana {}: {}", full_path.display(), e);
+                            }
+                        }
+                    }
                 }
             }
 
@@ -1326,6 +1344,7 @@ fn main() {
         let tab_arc = Arc::clone(&tab_arc);
         let editor_arc = Arc::clone(&editor_arc);
         let canvas_arc = Arc::clone(&canvas_arc);
+        let grimoire_arc = Arc::clone(&grimoire_arc);
         app.on_tab_selected(move |idx| {
             if let Ok(mut tm) = tab_arc.lock() {
                 if tm.active_pane_mut().select_tab(idx as usize) {
@@ -1335,6 +1354,19 @@ fn main() {
                         let is_membrane = tab.is_membrane();
                         let icon_str = tab.icon.clone().unwrap_or_default();
                         let content = format!("# {}\n\nConteúdo restaurado da aba `{}`.", title, path);
+
+                        if is_membrane {
+                            if let Ok(gm) = grimoire_arc.lock() {
+                                if let Some(active) = gm.active_grimoire() {
+                                    let full_path = active.path.join(&path);
+                                    if let Ok(mut cc) = canvas_arc.lock() {
+                                        if let Err(e) = cc.load_from_file(&full_path) {
+                                            tracing::warn!("Falha ao carregar membrana {}: {}", full_path.display(), e);
+                                        }
+                                    }
+                                }
+                            }
+                        }
 
                         if let Ok(mut ed) = editor_arc.lock() {
                             ed.set_content(&content);
@@ -1375,6 +1407,7 @@ fn main() {
         let app_weak = app_weak.clone();
         let tab_arc = Arc::clone(&tab_arc);
         let canvas_arc = Arc::clone(&canvas_arc);
+        let grimoire_arc = Arc::clone(&grimoire_arc);
         app.on_tab_closed(move |idx| {
             if let Ok(mut tm) = tab_arc.lock() {
                 let _ = tm.active_pane_mut().close_tab(idx as usize);
@@ -1394,6 +1427,17 @@ fn main() {
                         w.set_active_note_content(content.as_str().into());
 
                         if is_membrane {
+                            if let Ok(gm) = grimoire_arc.lock() {
+                                if let Some(active) = gm.active_grimoire() {
+                                    let full_path = active.path.join(&active_tab.path);
+                                    if let Ok(mut cc) = canvas_arc.lock() {
+                                        if let Err(e) = cc.load_from_file(&full_path) {
+                                            tracing::warn!("Falha ao carregar membrana {}: {}", full_path.display(), e);
+                                        }
+                                    }
+                                }
+                            }
+
                             if let Ok(cc) = canvas_arc.lock() {
                                 let (nodes, edges) = cc.to_visual_models();
                                 w.set_canvas_nodes(ModelRc::new(VecModel::from(to_slint_canvas_nodes(&nodes))));
