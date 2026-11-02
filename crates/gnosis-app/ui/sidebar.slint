@@ -20,6 +20,7 @@ export component Sidebar inherits Rectangle {
     callback folder_toggled(string);
     callback toggle_sidebar();
     callback new_note_requested();
+    callback new_membrane_requested();
     callback settings_clicked();
     callback grimoire_clicked();
 
@@ -87,6 +88,26 @@ export component Sidebar inherits Rectangle {
             HorizontalLayout {
                 spacing: 4px;
                 alignment: end;
+
+                // Botão Nova Membrana / Pergaminho (📜)
+                Rectangle {
+                    width: 24px;
+                    height: 24px;
+                    border-radius: 4px;
+                    background: touch_new_membrane.has-hover ? Theme.surface_hover : transparent;
+
+                    Text {
+                        text: "📜";
+                        font-size: 11px;
+                        vertical-alignment: center;
+                        horizontal-alignment: center;
+                    }
+
+                    touch_new_membrane := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { root.new_membrane_requested(); }
+                    }
+                }
 
                 // Botão Nova Nota (ao lado do nome do Grimório)
                 Rectangle {

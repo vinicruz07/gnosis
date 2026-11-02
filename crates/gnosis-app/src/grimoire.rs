@@ -531,5 +531,43 @@ mod tests {
 
         let _ = fs::remove_dir_all(&temp_dir);
     }
+
+    #[test]
+    fn test_grimoire_membrane_auto_naming_collision() {
+        let temp_dir = std::env::temp_dir().join(format!("gnosis_test_grimoire_{}", md5_or_simple_hash(b"membrane_naming")));
+        let _ = fs::remove_dir_all(&temp_dir);
+        let _ = fs::create_dir_all(&temp_dir);
+
+        let mut mgr = GrimoireManager::with_config_dir(temp_dir.clone());
+        let _ = mgr.create_grimoire(&temp_dir, "Grimorio Arcano").unwrap_or_else(|e| panic!("{}", e));
+
+        // Cria a primeira membrana "Nova Membrana"
+        let p1 = mgr.create_membrane_in_active("Nova Membrana", "{\"nodes\":[],\"edges\":[]}").unwrap_or_else(|e| panic!("{}", e));
+        assert!(p1.ends_with("Nova Membrana.membrana"));
+
+        // Simula a lógica de resolução de colisões
+        let existing = mgr.scan_active_grimoire_relative_paths();
+        assert!(existing.contains(&"Nova Membrana.membrana".to_string()));
+
+        let mut counter = 1;
+        let mut next_title = "Nova Membrana".to_string();
+        let mut next_path = "Nova Membrana.membrana".to_string();
+        while existing.contains(&next_path) {
+            counter += 1;
+            next_title = format!("Nova Membrana {}", counter);
+            next_path = format!("{}.membrana", next_title);
+        }
+        assert_eq!(next_title, "Nova Membrana 2");
+        assert_eq!(next_path, "Nova Membrana 2.membrana");
+
+        let p2 = mgr.create_membrane_in_active(&next_title, "{\"nodes\":[],\"edges\":[]}").unwrap_or_else(|e| panic!("{}", e));
+        assert!(p2.ends_with("Nova Membrana 2.membrana"));
+
+        let updated = mgr.scan_active_grimoire_relative_paths();
+        assert!(updated.contains(&"Nova Membrana.membrana".to_string()));
+        assert!(updated.contains(&"Nova Membrana 2.membrana".to_string()));
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
 }
 

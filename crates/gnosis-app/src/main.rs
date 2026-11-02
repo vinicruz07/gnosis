@@ -2171,6 +2171,100 @@ fn main() {
         });
     }
 
+    // Callback: Botão Nova Membrana (📜) ao lado do título do Grimório
+    {
+        let app_weak = app_weak.clone();
+        let state_arc = Arc::clone(&state_arc);
+        let grimoire_arc = Arc::clone(&grimoire_arc);
+        let canvas_arc = Arc::clone(&canvas_arc);
+        let tab_arc = Arc::clone(&tab_arc);
+
+        app.on_new_membrane_requested(move || {
+            let mut created_title = "Nova Membrana".to_string();
+            let mut created_path = "Nova Membrana.membrana".to_string();
+
+            let mut default_data = gnosis_core::canvas::CanvasData::new();
+            default_data.add_node(gnosis_core::canvas::CanvasNode::Text(gnosis_core::canvas::TextNode {
+                id: "welcome_membrane".to_string(),
+                x: 100,
+                y: 100,
+                width: 320,
+                height: 180,
+                color: Some("#10b981".to_string()),
+                text: "### Membrana Arcana\n\nEste é o seu pergaminho infinito de pensamentos e conexões visuais.\n\n- Dê dois cliques para adicionar novos cards.\n- Arraste para reposicionar nós no espaço.".to_string(),
+                extra: Default::default(),
+            }));
+            let default_canvas_json = serde_json::to_string_pretty(&default_data)
+                .unwrap_or_else(|_| "{\"nodes\":[],\"edges\":[]}".to_string());
+
+            let mut target_full_path = None;
+
+            if let Ok(gm) = grimoire_arc.lock() {
+                if gm.active_grimoire().is_some() {
+                    let existing = gm.scan_active_grimoire_relative_paths();
+                    let mut counter = 1;
+                    while existing.contains(&created_path) {
+                        counter += 1;
+                        created_title = format!("Nova Membrana {}", counter);
+                        created_path = format!("{}.membrana", created_title);
+                    }
+
+                    match gm.create_membrane_in_active(&created_title, &default_canvas_json) {
+                        Ok(p) => target_full_path = Some(p),
+                        Err(e) => tracing::warn!("Falha ao criar membrana no disco: {}", e),
+                    }
+                }
+            }
+
+            if let Ok(mut st) = state_arc.lock() {
+                st.add_entry(gnosis_app::FileTreeEntry {
+                    id: created_path.clone(),
+                    name: created_title.clone(),
+                    path: created_path.clone(),
+                    is_folder: false,
+                    parent_path: None,
+                    icon: Some("📜".to_string()),
+                });
+
+                if let Some(w) = app_weak.upgrade() {
+                    let items = to_slint_tree(&st.visible_tree_items());
+                    w.set_file_tree(ModelRc::new(VecModel::from(items)));
+                    w.set_active_note_title(created_title.as_str().into());
+                    w.set_active_note_icon("📜".into());
+                    w.set_is_graph_view(false);
+                    w.set_is_canvas_view(true);
+                }
+            }
+
+            if let Ok(mut tm) = tab_arc.lock() {
+                tm.open_note_with_icon(&created_path, &created_title, Some("📜".to_string()));
+                if let Some(w) = app_weak.upgrade() {
+                    let tabs = to_slint_tabs(tm.active_pane());
+                    w.set_tabs(ModelRc::new(VecModel::from(tabs)));
+                }
+            }
+
+            if let Ok(mut cc) = canvas_arc.lock() {
+                if let Some(full_path) = target_full_path {
+                    let _ = cc.load_from_file(&full_path);
+                } else {
+                    let _ = cc.load_from_json(&default_canvas_json);
+                }
+
+                if let Some(w) = app_weak.upgrade() {
+                    let (nodes, edges) = cc.to_visual_models();
+                    w.set_canvas_nodes(ModelRc::new(VecModel::from(to_slint_canvas_nodes(&nodes))));
+                    w.set_canvas_edges(ModelRc::new(VecModel::from(to_slint_canvas_edges(&edges))));
+                    w.set_canvas_zoom_level(cc.zoom);
+                    w.set_canvas_node_count(cc.canvas_data.node_count() as i32);
+                    w.set_canvas_edge_count(cc.canvas_data.edge_count() as i32);
+                }
+            }
+
+            info!("Nova membrana criada e aberta com sucesso: {}", created_path);
+        });
+    }
+
     // Callbacks do Modal de Grimórios (Vaults)
     // 1. Abrir Modal de Grimórios
     {
