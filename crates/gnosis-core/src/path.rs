@@ -13,6 +13,49 @@ const WINDOWS_RESERVED_NAMES: &[&str] = &[
     "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
 ];
 
+/// Classificação tipada de documentos e mídias suportadas pelo Gnosis.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum DocumentKind {
+    /// Documento textual Markdown (`.md`, `.markdown`)
+    Markdown,
+    /// Pergaminho visual no padrão interoperável Obsidian JSON Canvas (`.canvas`)
+    Canvas,
+    /// Pergaminho visual no padrão nativo Gnosis Membrana (`.membrana`)
+    Membrana,
+    /// Outros tipos de arquivos ou anexos genéricos
+    Other,
+}
+
+impl DocumentKind {
+    /// Classifica o documento a partir de sua extensão ou caminho relativo.
+    pub fn from_path_str(path: &str) -> Self {
+        let lower = path.to_ascii_lowercase();
+        if lower.ends_with(".canvas") {
+            DocumentKind::Canvas
+        } else if lower.ends_with(".membrana") {
+            DocumentKind::Membrana
+        } else if lower.ends_with(".md") || lower.ends_with(".markdown") {
+            DocumentKind::Markdown
+        } else {
+            DocumentKind::Other
+        }
+    }
+
+    /// Retorna se o tipo de documento é uma Membrana / Pergaminho visual (`.canvas` ou `.membrana`).
+    pub fn is_membrane(&self) -> bool {
+        matches!(self, DocumentKind::Canvas | DocumentKind::Membrana)
+    }
+
+    /// Retorna o ícone temático padrão para exibição na interface do usuário.
+    pub fn default_icon(&self) -> &'static str {
+        match self {
+            DocumentKind::Markdown => "📄",
+            DocumentKind::Canvas | DocumentKind::Membrana => "📜",
+            DocumentKind::Other => "📁",
+        }
+    }
+}
+
 /// Representa um caminho relativo sanitizado e normalizado dentro de um Vault.
 ///
 /// Características invariantes:
@@ -139,6 +182,32 @@ impl VaultPath {
         }
     }
 
+    /// Retorna se o arquivo é um Canvas padrão interoperável (`.canvas`).
+    pub fn is_canvas(&self) -> bool {
+        match self.extension() {
+            Some(ext) => ext.eq_ignore_ascii_case("canvas"),
+            None => false,
+        }
+    }
+
+    /// Retorna se o arquivo é uma Membrana nativa do Gnosis (`.membrana`).
+    pub fn is_native_membrana(&self) -> bool {
+        match self.extension() {
+            Some(ext) => ext.eq_ignore_ascii_case("membrana"),
+            None => false,
+        }
+    }
+
+    /// Retorna se o arquivo é uma Membrana / Canvas (`.canvas` ou `.membrana`).
+    pub fn is_membrane(&self) -> bool {
+        self.is_canvas() || self.is_native_membrana()
+    }
+
+    /// Retorna o tipo classificado de documento para este caminho.
+    pub fn document_kind(&self) -> DocumentKind {
+        DocumentKind::from_path_str(self.as_str())
+    }
+
     /// Retorna o caminho do diretório pai, se existir.
     pub fn parent(&self) -> Option<Self> {
         match self.inner.rsplit_once('/') {
@@ -243,6 +312,36 @@ mod tests {
 
         // Teste de join com tentativa de fuga
         assert!(parent.join("../tentativa_fuga.md").is_err());
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_membrane_and_document_kinds() -> std::result::Result<(), CoreError> {
+        let p_canvas = VaultPath::parse("quadros/Ideias.canvas")?;
+        assert!(p_canvas.is_canvas());
+        assert!(!p_canvas.is_native_membrana());
+        assert!(p_canvas.is_membrane());
+        assert!(!p_canvas.is_markdown());
+        assert_eq!(p_canvas.document_kind(), DocumentKind::Canvas);
+        assert_eq!(p_canvas.document_kind().default_icon(), "📜");
+
+        let p_membrana = VaultPath::parse("quadros/Pergaminho Místico.membrana")?;
+        assert!(!p_membrana.is_canvas());
+        assert!(p_membrana.is_native_membrana());
+        assert!(p_membrana.is_membrane());
+        assert!(!p_membrana.is_markdown());
+        assert_eq!(p_membrana.document_kind(), DocumentKind::Membrana);
+        assert_eq!(p_membrana.document_kind().default_icon(), "📜");
+
+        let p_md = VaultPath::parse("notas/Grimorio.md")?;
+        assert!(p_md.is_markdown());
+        assert!(!p_md.is_membrane());
+        assert_eq!(p_md.document_kind(), DocumentKind::Markdown);
+        assert_eq!(p_md.document_kind().default_icon(), "📄");
+
+        assert_eq!(DocumentKind::from_path_str("imagem.png"), DocumentKind::Other);
+        assert_eq!(DocumentKind::from_path_str("imagem.png").default_icon(), "📁");
 
         Ok(())
     }

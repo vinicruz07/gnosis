@@ -1245,11 +1245,19 @@ fn main() {
         let editor_arc = Arc::clone(&editor_arc);
         app.on_note_selected(move |note_path| {
             let note_str = note_path.as_str();
-            let title = note_str
-                .rsplit('/')
-                .next()
-                .unwrap_or(note_str)
-                .trim_end_matches(".md");
+            let kind = gnosis_core::path::DocumentKind::from_path_str(note_str);
+            let file_name = note_str.rsplit('/').next().unwrap_or(note_str);
+            let title = if let Some(s) = file_name.strip_suffix(".canvas") {
+                s
+            } else if let Some(s) = file_name.strip_suffix(".membrana") {
+                s
+            } else if let Some(s) = file_name.strip_suffix(".md") {
+                s
+            } else if let Some(s) = file_name.strip_suffix(".markdown") {
+                s
+            } else {
+                file_name
+            };
 
             let content = format!(
                 "# {}\n\nNota carregada com sucesso do Vault local.\n\n```rust\n// Código na nota {}\n```\n\n> [!NOTE]\n> Nota ativa pronta para edição ágil.",
@@ -1261,6 +1269,8 @@ fn main() {
                 st.select_note(note_str, &content);
                 if !st.active_note_icon.is_empty() {
                     icon_opt = Some(st.active_note_icon.clone());
+                } else if kind.is_membrane() {
+                    icon_opt = Some(kind.default_icon().to_string());
                 }
             }
 

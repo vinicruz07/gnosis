@@ -168,13 +168,32 @@ impl AppState {
                 None
             };
 
+            let kind = gnosis_core::path::DocumentKind::from_path_str(path_str);
+            let clean_name = if let Some(stripped) = file_name.strip_suffix(".canvas") {
+                stripped.to_string()
+            } else if let Some(stripped) = file_name.strip_suffix(".membrana") {
+                stripped.to_string()
+            } else if let Some(stripped) = file_name.strip_suffix(".md") {
+                stripped.to_string()
+            } else if let Some(stripped) = file_name.strip_suffix(".markdown") {
+                stripped.to_string()
+            } else {
+                file_name.to_string()
+            };
+
+            let default_icon = if kind.is_membrane() {
+                Some(kind.default_icon().to_string())
+            } else {
+                None
+            };
+
             self.add_entry(FileTreeEntry {
                 id: path_str.to_string(),
-                name: file_name.trim_end_matches(".md").to_string(),
+                name: clean_name,
                 path: path_str.to_string(),
                 is_folder: false,
                 parent_path,
-                icon: None,
+                icon: default_icon,
             });
         }
     }
@@ -209,6 +228,22 @@ impl AppState {
                 let is_expanded = state.expanded_folders.contains(&child.path);
                 let is_active = state.active_note_path.as_deref() == Some(&child.path);
 
+                let icon_str = match &child.icon {
+                    Some(ic) if !ic.is_empty() => ic.clone(),
+                    _ => {
+                        if !child.is_folder {
+                            let kind = gnosis_core::path::DocumentKind::from_path_str(&child.path);
+                            if kind.is_membrane() {
+                                "📜".to_string()
+                            } else {
+                                String::new()
+                            }
+                        } else {
+                            String::new()
+                        }
+                    }
+                };
+
                 out.push(TreeItemModel {
                     id: child.id.clone(),
                     name: child.name.clone(),
@@ -217,7 +252,7 @@ impl AppState {
                     is_expanded,
                     indent_level: level,
                     is_active,
-                    icon: child.icon.clone().unwrap_or_default(),
+                    icon: icon_str,
                 });
 
                 // Se for pasta e estiver expandida, visita os filhos recursivamente
@@ -325,6 +360,37 @@ mod tests {
         assert!(rust_item.is_some());
         if let Some(item) = rust_item {
             assert_eq!(item.icon, "🦀");
+        }
+    }
+
+    #[test]
+    fn test_state_membrane_and_canvas_tree_items() {
+        let mut state = AppState::new("Grimório", "/vault");
+        let paths = vec![
+            "Pergaminhos/VisaoGeral.canvas",
+            "Pergaminhos/MapaMental.membrana",
+            "Notas/Introducao.md",
+        ];
+        state.populate_from_paths(paths);
+
+        // Abre a pasta Pergaminhos
+        state.toggle_folder("Pergaminhos");
+        let items = state.visible_tree_items();
+
+        let canvas_item = items.iter().find(|i| i.path == "Pergaminhos/VisaoGeral.canvas");
+        assert!(canvas_item.is_some());
+        if let Some(c) = canvas_item {
+            assert_eq!(c.name, "VisaoGeral");
+            assert_eq!(c.icon, "📜");
+            assert!(!c.is_folder);
+        }
+
+        let membrana_item = items.iter().find(|i| i.path == "Pergaminhos/MapaMental.membrana");
+        assert!(membrana_item.is_some());
+        if let Some(m) = membrana_item {
+            assert_eq!(m.name, "MapaMental");
+            assert_eq!(m.icon, "📜");
+            assert!(!m.is_folder);
         }
     }
 }

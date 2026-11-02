@@ -242,6 +242,31 @@ impl GrimoireManager {
         Ok(target_path)
     }
 
+    /// Cria uma nova Membrana no Grimório ativo com o nome fornecido (.membrana ou .canvas).
+    pub fn create_membrane_in_active(&self, relative_name: &str, content: &str) -> Result<PathBuf, String> {
+        let Some(active) = &self.active_grimoire else {
+            return Err("Nenhum Grimório ativo no momento.".to_string());
+        };
+
+        let clean_name = if relative_name.ends_with(".membrana") || relative_name.ends_with(".canvas") {
+            relative_name.to_string()
+        } else {
+            format!("{}.membrana", relative_name)
+        };
+
+        let target_path = active.path.join(&clean_name);
+        if let Some(parent) = target_path.parent() {
+            if !parent.exists() {
+                let _ = fs::create_dir_all(parent);
+            }
+        }
+
+        fs::write(&target_path, content)
+            .map_err(|e| format!("Falha ao gravar arquivo de membrana {}: {}", target_path.display(), e))?;
+
+        Ok(target_path)
+    }
+
     /// Função recursiva auxiliar para varrer arquivos no disco ignorando pastas de sistema.
     fn scan_dir_recursive(root: &Path, current: &Path, results: &mut Vec<String>) {
         let Ok(read_dir) = fs::read_dir(current) else {
@@ -261,7 +286,11 @@ impl GrimoireManager {
                 Self::scan_dir_recursive(root, &path, results);
             } else if path.is_file() {
                 let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
-                if ext == "md" || ext == "canvas" {
+                if ext.eq_ignore_ascii_case("md")
+                    || ext.eq_ignore_ascii_case("markdown")
+                    || ext.eq_ignore_ascii_case("canvas")
+                    || ext.eq_ignore_ascii_case("membrana")
+                {
                     if let Ok(rel) = path.strip_prefix(root) {
                         let rel_str = rel.to_string_lossy().replace('\\', "/");
                         results.push(rel_str);
@@ -471,6 +500,34 @@ mod tests {
             assert_eq!(mgr2.known_grimoires().len(), 2);
             assert_eq!(mgr2.active_grimoire().map(|g| g.name.as_str()), Some("Grimório Alfa"));
         }
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_grimoire_membrane_scanning_and_creation() {
+        let temp_dir = std::env::temp_dir().join(format!("gnosis_test_grimoire_{}", md5_or_simple_hash(b"membrane_scan")));
+        let _ = fs::remove_dir_all(&temp_dir);
+        let _ = fs::create_dir_all(&temp_dir);
+
+        let mut mgr = GrimoireManager::with_config_dir(temp_dir.clone());
+        let _ = mgr.create_grimoire(&temp_dir, "Grimório Místico").unwrap_or_else(|e| panic!("{}", e));
+
+        // Cria um arquivo .canvas e um arquivo .membrana
+        let membrana_path = mgr
+            .create_membrane_in_active("Ideias", "{\"nodes\":[],\"edges\":[]}")
+            .unwrap_or_else(|e| panic!("{}", e));
+        assert!(membrana_path.ends_with("Ideias.membrana"));
+
+        let canvas_path = mgr
+            .create_membrane_in_active("Interoperavel.canvas", "{\"nodes\":[],\"edges\":[]}")
+            .unwrap_or_else(|e| panic!("{}", e));
+        assert!(canvas_path.ends_with("Interoperavel.canvas"));
+
+        let scanned = mgr.scan_active_grimoire_relative_paths();
+        assert!(scanned.contains(&"Ideias.membrana".to_string()));
+        assert!(scanned.contains(&"Interoperavel.canvas".to_string()));
+        assert!(scanned.contains(&"Boas-vindas ao Grimório.md".to_string()));
 
         let _ = fs::remove_dir_all(&temp_dir);
     }
