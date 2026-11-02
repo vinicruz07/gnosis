@@ -709,4 +709,41 @@ mod tests {
 
         let _ = fs::remove_dir_all(&temp_dir);
     }
+
+    #[test]
+    fn test_membrane_interactive_smooth_pan_and_drag() {
+        let mut ctrl = CanvasViewController::new(CanvasData::new());
+        let card_id = ctrl.add_text_card("Pensamento em Movimento");
+
+        let initial_node = ctrl.canvas_data.get_node(&card_id).cloned().expect("Nó deve existir");
+        let start_x = initial_node.x();
+        let start_y = initial_node.y();
+
+        // 1. Simulação de Pan Suave por passos de delta (arraste de fundo)
+        let cam_start_x = ctrl.camera_x;
+        let cam_start_y = ctrl.camera_y;
+        ctrl.pan(12.0, -8.0);
+        ctrl.pan(5.0, 3.0);
+        assert_eq!(ctrl.camera_x, cam_start_x + 17.0);
+        assert_eq!(ctrl.camera_y, cam_start_y - 5.0);
+
+        // 2. Simulação de Arraste de Nó com Zoom 1.0 (passos de delta contínuos)
+        ctrl.move_node(&card_id, 20.0, 30.0);
+        ctrl.move_node(&card_id, -5.0, 10.0);
+
+        let moved_node = ctrl.canvas_data.get_node(&card_id).expect("Nó deve existir");
+        assert_eq!(moved_node.x(), start_x + 15);
+        assert_eq!(moved_node.y(), start_y + 40);
+        assert!(ctrl.is_modified);
+
+        // 3. Simulação de Arraste de Nó sob Zoom 2.0 (escala do mundo recalculada com precisão)
+        ctrl.zoom = 2.0;
+        let before_zoom_move_x = moved_node.x();
+        let before_zoom_move_y = moved_node.y();
+        ctrl.move_node(&card_id, 40.0, -20.0); // 40px na tela / zoom 2.0 = 20 unidades no mundo
+
+        let post_zoom_node = ctrl.canvas_data.get_node(&card_id).expect("Nó deve existir");
+        assert_eq!(post_zoom_node.x(), before_zoom_move_x + 20);
+        assert_eq!(post_zoom_node.y(), before_zoom_move_y - 10);
+    }
 }

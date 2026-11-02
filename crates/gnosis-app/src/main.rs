@@ -690,19 +690,28 @@ fn main() {
         });
     }
 
-    // Callback: Arraste de nó no Canvas
+    // Callback: Arraste de nó no Canvas (60 FPS contínuo em memória sem bloqueio de I/O)
     {
         let app_weak = app_weak.clone();
         let canvas_arc = Arc::clone(&canvas_arc);
         app.on_canvas_node_dragged(move |node_id, dx, dy| {
             if let Ok(mut cc) = canvas_arc.lock() {
                 cc.move_node(node_id.as_str(), dx, dy);
-                let _ = cc.save_to_disk();
                 if let Some(w) = app_weak.upgrade() {
                     let (nodes, edges) = cc.to_visual_models();
                     w.set_canvas_nodes(ModelRc::new(VecModel::from(to_slint_canvas_nodes(&nodes))));
                     w.set_canvas_edges(ModelRc::new(VecModel::from(to_slint_canvas_edges(&edges))));
                 }
+            }
+        });
+    }
+
+    // Callback: Término de arraste de nó no Canvas (gravação atômica em disco)
+    {
+        let canvas_arc = Arc::clone(&canvas_arc);
+        app.on_canvas_node_released(move |_node_id| {
+            if let Ok(mut cc) = canvas_arc.lock() {
+                let _ = cc.save_to_disk();
             }
         });
     }

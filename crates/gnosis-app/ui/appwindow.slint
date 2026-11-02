@@ -159,6 +159,7 @@ export component AppWindow inherits Window {
     callback toggle_canvas_view();
     callback canvas_node_clicked(string);
     callback canvas_node_dragged(string, float, float);
+    callback canvas_node_released(string);
     callback canvas_node_double_clicked(string);
     callback canvas_panned(float, float);
     callback canvas_zoom_in();
@@ -538,6 +539,7 @@ export component AppWindow inherits Window {
 
                     node_clicked(id) => { root.canvas_node_clicked(id); }
                     node_dragged(id, dx, dy) => { root.canvas_node_dragged(id, dx, dy); }
+                    node_released(id) => { root.canvas_node_released(id); }
                     node_double_clicked(id) => { root.canvas_node_double_clicked(id); }
                     canvas_panned(dx, dy) => { root.canvas_panned(dx, dy); }
                     zoom_in => { root.canvas_zoom_in(); }
