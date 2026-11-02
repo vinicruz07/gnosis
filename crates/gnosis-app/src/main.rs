@@ -1243,9 +1243,11 @@ fn main() {
         let state_arc = Arc::clone(&state_arc);
         let tab_arc = Arc::clone(&tab_arc);
         let editor_arc = Arc::clone(&editor_arc);
+        let canvas_arc = Arc::clone(&canvas_arc);
         app.on_note_selected(move |note_path| {
             let note_str = note_path.as_str();
             let kind = gnosis_core::path::DocumentKind::from_path_str(note_str);
+            let is_membrane = kind.is_membrane();
             let file_name = note_str.rsplit('/').next().unwrap_or(note_str);
             let title = if let Some(s) = file_name.strip_suffix(".canvas") {
                 s
@@ -1269,7 +1271,7 @@ fn main() {
                 st.select_note(note_str, &content);
                 if !st.active_note_icon.is_empty() {
                     icon_opt = Some(st.active_note_icon.clone());
-                } else if kind.is_membrane() {
+                } else if is_membrane {
                     icon_opt = Some(kind.default_icon().to_string());
                 }
             }
@@ -1285,6 +1287,7 @@ fn main() {
 
                 if let Some(w) = app_weak.upgrade() {
                     w.set_is_graph_view(false);
+                    w.set_is_canvas_view(is_membrane);
                     w.set_active_note_title(title.into());
                     w.set_active_note_icon(icon_opt.as_deref().unwrap_or("").into());
                     w.set_active_note_content(content.as_str().into());
@@ -1294,7 +1297,16 @@ fn main() {
                     let tabs = to_slint_tabs(tm.active_pane());
                     w.set_tabs(ModelRc::new(VecModel::from(tabs)));
 
-                    if let Ok(ed) = editor_arc.lock() {
+                    if is_membrane {
+                        if let Ok(cc) = canvas_arc.lock() {
+                            let (nodes, edges) = cc.to_visual_models();
+                            w.set_canvas_nodes(ModelRc::new(VecModel::from(to_slint_canvas_nodes(&nodes))));
+                            w.set_canvas_edges(ModelRc::new(VecModel::from(to_slint_canvas_edges(&edges))));
+                            w.set_canvas_zoom_level(cc.zoom);
+                            w.set_canvas_node_count(cc.canvas_data.node_count() as i32);
+                            w.set_canvas_edge_count(cc.canvas_data.edge_count() as i32);
+                        }
+                    } else if let Ok(ed) = editor_arc.lock() {
                         let ast = to_slint_ast_blocks(&ed.generate_render_blocks());
                         w.set_ast_blocks(ModelRc::new(VecModel::from(ast)));
                     }
@@ -1313,12 +1325,14 @@ fn main() {
         let app_weak = app_weak.clone();
         let tab_arc = Arc::clone(&tab_arc);
         let editor_arc = Arc::clone(&editor_arc);
+        let canvas_arc = Arc::clone(&canvas_arc);
         app.on_tab_selected(move |idx| {
             if let Ok(mut tm) = tab_arc.lock() {
                 if tm.active_pane_mut().select_tab(idx as usize) {
                     if let Some(tab) = tm.active_pane().active_tab() {
                         let title = tab.title.clone();
                         let path = tab.path.clone();
+                        let is_membrane = tab.is_membrane();
                         let icon_str = tab.icon.clone().unwrap_or_default();
                         let content = format!("# {}\n\nConteúdo restaurado da aba `{}`.", title, path);
 
@@ -1328,6 +1342,7 @@ fn main() {
 
                         if let Some(w) = app_weak.upgrade() {
                             w.set_is_graph_view(false);
+                            w.set_is_canvas_view(is_membrane);
                             w.set_active_note_title(title.as_str().into());
                             w.set_active_note_icon(icon_str.as_str().into());
                             w.set_active_note_content(content.as_str().into());
@@ -1335,7 +1350,16 @@ fn main() {
                             let tabs = to_slint_tabs(tm.active_pane());
                             w.set_tabs(ModelRc::new(VecModel::from(tabs)));
 
-                            if let Ok(ed) = editor_arc.lock() {
+                            if is_membrane {
+                                if let Ok(cc) = canvas_arc.lock() {
+                                    let (nodes, edges) = cc.to_visual_models();
+                                    w.set_canvas_nodes(ModelRc::new(VecModel::from(to_slint_canvas_nodes(&nodes))));
+                                    w.set_canvas_edges(ModelRc::new(VecModel::from(to_slint_canvas_edges(&edges))));
+                                    w.set_canvas_zoom_level(cc.zoom);
+                                    w.set_canvas_node_count(cc.canvas_data.node_count() as i32);
+                                    w.set_canvas_edge_count(cc.canvas_data.edge_count() as i32);
+                                }
+                            } else if let Ok(ed) = editor_arc.lock() {
                                 let ast = to_slint_ast_blocks(&ed.generate_render_blocks());
                                 w.set_ast_blocks(ModelRc::new(VecModel::from(ast)));
                             }
@@ -1350,6 +1374,7 @@ fn main() {
     {
         let app_weak = app_weak.clone();
         let tab_arc = Arc::clone(&tab_arc);
+        let canvas_arc = Arc::clone(&canvas_arc);
         app.on_tab_closed(move |idx| {
             if let Ok(mut tm) = tab_arc.lock() {
                 let _ = tm.active_pane_mut().close_tab(idx as usize);
@@ -1360,11 +1385,28 @@ fn main() {
 
                     if let Some(active_tab) = tm.active_pane().active_tab() {
                         let title = active_tab.title.clone();
+                        let is_membrane = active_tab.is_membrane();
+                        let icon_str = active_tab.icon.clone().unwrap_or_default();
                         let content = format!("# {}\n\nConteúdo da nota ativa.", title);
+                        w.set_is_canvas_view(is_membrane);
                         w.set_active_note_title(title.as_str().into());
+                        w.set_active_note_icon(icon_str.as_str().into());
                         w.set_active_note_content(content.as_str().into());
+
+                        if is_membrane {
+                            if let Ok(cc) = canvas_arc.lock() {
+                                let (nodes, edges) = cc.to_visual_models();
+                                w.set_canvas_nodes(ModelRc::new(VecModel::from(to_slint_canvas_nodes(&nodes))));
+                                w.set_canvas_edges(ModelRc::new(VecModel::from(to_slint_canvas_edges(&edges))));
+                                w.set_canvas_zoom_level(cc.zoom);
+                                w.set_canvas_node_count(cc.canvas_data.node_count() as i32);
+                                w.set_canvas_edge_count(cc.canvas_data.edge_count() as i32);
+                            }
+                        }
                     } else {
+                        w.set_is_canvas_view(false);
                         w.set_active_note_title("Sem abas abertas".into());
+                        w.set_active_note_icon("".into());
                         w.set_active_note_content("Abra uma nota na barra lateral ou pressione Ctrl+O para buscar.".into());
                     }
                 }
@@ -1377,15 +1419,12 @@ fn main() {
         let app_weak = app_weak.clone();
         let tab_arc = Arc::clone(&tab_arc);
         let editor_arc = Arc::clone(&editor_arc);
+        let canvas_arc = Arc::clone(&canvas_arc);
         app.on_go_back(move || {
             if let Ok(mut tm) = tab_arc.lock() {
                 if let Some(path) = tm.navigate_back() {
-                    let title = path
-                        .rsplit('/')
-                        .next()
-                        .unwrap_or(&path)
-                        .trim_end_matches(".md");
-
+                    let is_membrane = gnosis_core::path::DocumentKind::from_path_str(&path).is_membrane();
+                    let title = gnosis_app::tabs::clean_title_from_path(&path);
                     let content = format!("# {}\n\nNavegação retornada para `{}`.", title, path);
 
                     if let Ok(mut ed) = editor_arc.lock() {
@@ -1394,6 +1433,7 @@ fn main() {
 
                     if let Some(w) = app_weak.upgrade() {
                         w.set_is_graph_view(false);
+                        w.set_is_canvas_view(is_membrane);
                         w.set_active_note_title(title.into());
                         w.set_active_note_content(content.as_str().into());
                         w.set_can_go_back(tm.history.can_go_back());
@@ -1402,7 +1442,16 @@ fn main() {
                         let tabs = to_slint_tabs(tm.active_pane());
                         w.set_tabs(ModelRc::new(VecModel::from(tabs)));
 
-                        if let Ok(ed) = editor_arc.lock() {
+                        if is_membrane {
+                            if let Ok(cc) = canvas_arc.lock() {
+                                let (nodes, edges) = cc.to_visual_models();
+                                w.set_canvas_nodes(ModelRc::new(VecModel::from(to_slint_canvas_nodes(&nodes))));
+                                w.set_canvas_edges(ModelRc::new(VecModel::from(to_slint_canvas_edges(&edges))));
+                                w.set_canvas_zoom_level(cc.zoom);
+                                w.set_canvas_node_count(cc.canvas_data.node_count() as i32);
+                                w.set_canvas_edge_count(cc.canvas_data.edge_count() as i32);
+                            }
+                        } else if let Ok(ed) = editor_arc.lock() {
                             let ast = to_slint_ast_blocks(&ed.generate_render_blocks());
                             w.set_ast_blocks(ModelRc::new(VecModel::from(ast)));
                         }
@@ -1417,15 +1466,12 @@ fn main() {
         let app_weak = app_weak.clone();
         let tab_arc = Arc::clone(&tab_arc);
         let editor_arc = Arc::clone(&editor_arc);
+        let canvas_arc = Arc::clone(&canvas_arc);
         app.on_go_forward(move || {
             if let Ok(mut tm) = tab_arc.lock() {
                 if let Some(path) = tm.navigate_forward() {
-                    let title = path
-                        .rsplit('/')
-                        .next()
-                        .unwrap_or(&path)
-                        .trim_end_matches(".md");
-
+                    let is_membrane = gnosis_core::path::DocumentKind::from_path_str(&path).is_membrane();
+                    let title = gnosis_app::tabs::clean_title_from_path(&path);
                     let content = format!("# {}\n\nNavegação avançada para `{}`.", title, path);
 
                     if let Ok(mut ed) = editor_arc.lock() {
@@ -1434,6 +1480,7 @@ fn main() {
 
                     if let Some(w) = app_weak.upgrade() {
                         w.set_is_graph_view(false);
+                        w.set_is_canvas_view(is_membrane);
                         w.set_active_note_title(title.into());
                         w.set_active_note_content(content.as_str().into());
                         w.set_can_go_back(tm.history.can_go_back());
@@ -1442,7 +1489,16 @@ fn main() {
                         let tabs = to_slint_tabs(tm.active_pane());
                         w.set_tabs(ModelRc::new(VecModel::from(tabs)));
 
-                        if let Ok(ed) = editor_arc.lock() {
+                        if is_membrane {
+                            if let Ok(cc) = canvas_arc.lock() {
+                                let (nodes, edges) = cc.to_visual_models();
+                                w.set_canvas_nodes(ModelRc::new(VecModel::from(to_slint_canvas_nodes(&nodes))));
+                                w.set_canvas_edges(ModelRc::new(VecModel::from(to_slint_canvas_edges(&edges))));
+                                w.set_canvas_zoom_level(cc.zoom);
+                                w.set_canvas_node_count(cc.canvas_data.node_count() as i32);
+                                w.set_canvas_edge_count(cc.canvas_data.edge_count() as i32);
+                            }
+                        } else if let Ok(ed) = editor_arc.lock() {
                             let ast = to_slint_ast_blocks(&ed.generate_render_blocks());
                             w.set_ast_blocks(ModelRc::new(VecModel::from(ast)));
                         }
@@ -1547,17 +1603,20 @@ fn main() {
                 }
             }
 
-            if let Some((item_type, action_id, title)) = action_opt {
+            if let Some((item_type, action_id, _title)) = action_opt {
                 match item_type {
                     gnosis_app::QuickItemType::Note => {
                         let path = action_id;
+                        let is_membrane = gnosis_core::path::DocumentKind::from_path_str(&path).is_membrane();
+                        let default_icon = if is_membrane { Some("📜".to_string()) } else { None };
+                        let clean_title = gnosis_app::tabs::clean_title_from_path(&path);
                         let content = format!(
                             "# {}\n\nNota aberta via Quick Switcher instantâneo.\n\n```rust\n// Código na nota {}\n```\n\n> [!NOTE]\n> Nota ativa pronta para edição ágil.",
-                            title, path
+                            clean_title, path
                         );
 
                         if let Ok(mut tm) = tab_arc.lock() {
-                            tm.open_note(&path, &title);
+                            tm.open_note_with_icon(&path, clean_title, default_icon);
                         }
 
                         if let Ok(mut st) = state_arc.lock() {
@@ -1570,8 +1629,8 @@ fn main() {
 
                         if let Some(w) = app_weak.upgrade() {
                             w.set_is_graph_view(false);
-                            w.set_is_canvas_view(false);
-                            w.set_active_note_title(title.as_str().into());
+                            w.set_is_canvas_view(is_membrane);
+                            w.set_active_note_title(clean_title.into());
                             w.set_active_note_content(content.as_str().into());
 
                             if let Ok(tm) = tab_arc.lock() {
@@ -1579,7 +1638,16 @@ fn main() {
                                 w.set_tabs(ModelRc::new(VecModel::from(tabs)));
                             }
 
-                            if let Ok(ed) = editor_arc.lock() {
+                            if is_membrane {
+                                if let Ok(cc) = canvas_arc.lock() {
+                                    let (nodes, edges) = cc.to_visual_models();
+                                    w.set_canvas_nodes(ModelRc::new(VecModel::from(to_slint_canvas_nodes(&nodes))));
+                                    w.set_canvas_edges(ModelRc::new(VecModel::from(to_slint_canvas_edges(&edges))));
+                                    w.set_canvas_zoom_level(cc.zoom);
+                                    w.set_canvas_node_count(cc.canvas_data.node_count() as i32);
+                                    w.set_canvas_edge_count(cc.canvas_data.edge_count() as i32);
+                                }
+                            } else if let Ok(ed) = editor_arc.lock() {
                                 let ast = to_slint_ast_blocks(&ed.generate_render_blocks());
                                 w.set_ast_blocks(ModelRc::new(VecModel::from(ast)));
                             }

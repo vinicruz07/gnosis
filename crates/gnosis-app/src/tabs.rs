@@ -19,6 +19,12 @@ impl TabItem {
     pub fn new(path: impl Into<String>, title: impl Into<String>) -> Self {
         let p = path.into();
         let t = title.into();
+        let kind = gnosis_core::path::DocumentKind::from_path_str(&p);
+        let default_icon = if kind.is_membrane() {
+            Some(kind.default_icon().to_string())
+        } else {
+            None
+        };
         Self {
             id: p.clone(),
             path: p,
@@ -27,13 +33,25 @@ impl TabItem {
             is_modified: false,
             cursor_position: 0,
             scroll_offset: 0.0,
-            icon: None,
+            icon: default_icon,
         }
+    }
+
+    /// Retorna a classificação tipada de documento associada a esta aba.
+    pub fn document_kind(&self) -> gnosis_core::path::DocumentKind {
+        gnosis_core::path::DocumentKind::from_path_str(&self.path)
+    }
+
+    /// Retorna se esta aba representa uma Membrana / Pergaminho visual (`.canvas` ou `.membrana`).
+    pub fn is_membrane(&self) -> bool {
+        self.document_kind().is_membrane()
     }
 
     /// Anexa um ícone ou sticker personalizado à aba.
     pub fn with_icon(mut self, icon: Option<impl Into<String>>) -> Self {
-        self.icon = icon.map(|i| i.into());
+        if let Some(i) = icon {
+            self.icon = Some(i.into());
+        }
         self
     }
 }
@@ -70,6 +88,11 @@ impl EditorPane {
         self.tabs.get(self.active_tab_index)
     }
 
+    /// Retorna se a aba ativa no painel é uma Membrana / Pergaminho visual (`.canvas` ou `.membrana`).
+    pub fn active_tab_is_membrane(&self) -> bool {
+        self.active_tab().map(|t| t.is_membrane()).unwrap_or(false)
+    }
+
     /// Retorna uma referência mutável à aba ativa.
     pub fn active_tab_mut(&mut self) -> Option<&mut TabItem> {
         self.tabs.get_mut(self.active_tab_index)
@@ -80,12 +103,17 @@ impl EditorPane {
         if let Some(pos) = self.tabs.iter().position(|t| t.path == path) {
             if icon.is_some() {
                 self.tabs[pos].icon = icon;
+            } else if self.tabs[pos].icon.is_none() && self.tabs[pos].is_membrane() {
+                self.tabs[pos].icon = Some("📜".to_string());
             }
             self.active_tab_index = pos;
             return pos;
         }
 
-        let new_tab = TabItem::new(path, title).with_icon(icon);
+        let mut new_tab = TabItem::new(path, title);
+        if icon.is_some() {
+            new_tab = new_tab.with_icon(icon);
+        }
         self.tabs.push(new_tab);
         self.active_tab_index = self.tabs.len().saturating_sub(1);
         self.active_tab_index
@@ -274,14 +302,15 @@ impl TabManager {
         }
     }
 
+    /// Retorna se a aba ativa no painel atual é uma Membrana (.canvas ou .membrana).
+    pub fn is_active_tab_membrane(&self) -> bool {
+        self.active_pane().active_tab_is_membrane()
+    }
+
     /// Retorna à nota anterior pelo histórico.
     pub fn navigate_back(&mut self) -> Option<String> {
         let path = self.history.go_back()?;
-        let title = path
-            .rsplit('/')
-            .next()
-            .unwrap_or(&path)
-            .trim_end_matches(".md");
+        let title = clean_title_from_path(&path);
         self.active_pane_mut().open_tab(&path, title);
         Some(path)
     }
@@ -289,13 +318,25 @@ impl TabManager {
     /// Avança à próxima nota pelo histórico.
     pub fn navigate_forward(&mut self) -> Option<String> {
         let path = self.history.go_forward()?;
-        let title = path
-            .rsplit('/')
-            .next()
-            .unwrap_or(&path)
-            .trim_end_matches(".md");
+        let title = clean_title_from_path(&path);
         self.active_pane_mut().open_tab(&path, title);
         Some(path)
+    }
+}
+
+/// Extrai um título legível para a aba a partir de seu caminho relativo, removendo extensões conhecidas.
+pub fn clean_title_from_path(path: &str) -> &str {
+    let file_name = path.rsplit('/').next().unwrap_or(path);
+    if let Some(s) = file_name.strip_suffix(".canvas") {
+        s
+    } else if let Some(s) = file_name.strip_suffix(".membrana") {
+        s
+    } else if let Some(s) = file_name.strip_suffix(".md") {
+        s
+    } else if let Some(s) = file_name.strip_suffix(".markdown") {
+        s
+    } else {
+        file_name
     }
 }
 
@@ -423,6 +464,52 @@ mod tests {
             assert_eq!(tab.title, "Documentação");
             assert_eq!(tab.icon.as_deref(), Some("📚"));
         }
+    }
+
+    #[test]
+    fn test_membrane_tabs_detection_icon_and_switching() {
+        let mut manager = TabManager::new();
+
+        // Abre uma nota normal
+        manager.open_note("Notas/Ideia.md", "Ideia");
+        assert!(!manager.is_active_tab_membrane());
+        let tab_md = manager.active_pane().active_tab();
+        assert!(tab_md.is_some());
+        if let Some(t) = tab_md {
+            assert!(!t.is_membrane());
+            assert_eq!(t.document_kind(), gnosis_core::path::DocumentKind::Markdown);
+        }
+
+        // Abre uma Membrana (.membrana)
+        manager.open_note("Mapas/Conceito.membrana", "Conceito");
+        assert!(manager.is_active_tab_membrane());
+        let tab_mem = manager.active_pane().active_tab();
+        assert!(tab_mem.is_some());
+        if let Some(t) = tab_mem {
+            assert!(t.is_membrane());
+            assert_eq!(t.document_kind(), gnosis_core::path::DocumentKind::Membrana);
+            assert_eq!(t.icon.as_deref(), Some("📜"));
+        }
+
+        // Abre um Canvas interoperável (.canvas)
+        manager.open_note("Diagramas/Fluxo.canvas", "Fluxo");
+        assert!(manager.is_active_tab_membrane());
+        let tab_canvas = manager.active_pane().active_tab();
+        assert!(tab_canvas.is_some());
+        if let Some(t) = tab_canvas {
+            assert!(t.is_membrane());
+            assert_eq!(t.document_kind(), gnosis_core::path::DocumentKind::Canvas);
+            assert_eq!(t.icon.as_deref(), Some("📜"));
+        }
+
+        // Alterna de volta para a aba Ideia.md (índice 1)
+        assert!(manager.active_pane_mut().select_tab(1));
+        assert!(!manager.is_active_tab_membrane());
+
+        // Teste do helper clean_title_from_path
+        assert_eq!(clean_title_from_path("pastas/Sub/Quadro.canvas"), "Quadro");
+        assert_eq!(clean_title_from_path("pastas/Sub/Místico.membrana"), "Místico");
+        assert_eq!(clean_title_from_path("pastas/Sub/Artigo.md"), "Artigo");
     }
 }
 
