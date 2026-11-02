@@ -185,6 +185,7 @@ fn to_slint_canvas_nodes(nodes: &[CanvasNodeVisual]) -> Vec<CanvasNodeSlint> {
             content: n.content.as_str().into(),
             subpath: n.subpath.as_str().into(),
             is_selected: n.is_selected,
+            is_editing: n.is_editing,
         })
         .collect()
 }
@@ -712,6 +713,56 @@ fn main() {
         app.on_canvas_node_released(move |_node_id| {
             if let Ok(mut cc) = canvas_arc.lock() {
                 let _ = cc.save_to_disk();
+            }
+        });
+    }
+
+    // Callback: Iniciar edição in-place de nó de texto na Membrana
+    {
+        let app_weak = app_weak.clone();
+        let canvas_arc = Arc::clone(&canvas_arc);
+        app.on_canvas_node_edit_started(move |node_id| {
+            if let Ok(mut cc) = canvas_arc.lock() {
+                cc.start_editing_node(node_id.as_str());
+                if let Some(w) = app_weak.upgrade() {
+                    let (nodes, edges) = cc.to_visual_models();
+                    w.set_canvas_nodes(ModelRc::new(VecModel::from(to_slint_canvas_nodes(&nodes))));
+                    w.set_canvas_edges(ModelRc::new(VecModel::from(to_slint_canvas_edges(&edges))));
+                }
+            }
+        });
+    }
+
+    // Callback: Aplicar texto editado no nó e persistir no disco
+    {
+        let app_weak = app_weak.clone();
+        let canvas_arc = Arc::clone(&canvas_arc);
+        app.on_canvas_node_edit_applied(move |node_id, new_text| {
+            if let Ok(mut cc) = canvas_arc.lock() {
+                if cc.apply_node_edit(node_id.as_str(), new_text.as_str()) {
+                    let _ = cc.save_to_disk();
+                }
+                if let Some(w) = app_weak.upgrade() {
+                    let (nodes, edges) = cc.to_visual_models();
+                    w.set_canvas_nodes(ModelRc::new(VecModel::from(to_slint_canvas_nodes(&nodes))));
+                    w.set_canvas_edges(ModelRc::new(VecModel::from(to_slint_canvas_edges(&edges))));
+                }
+            }
+        });
+    }
+
+    // Callback: Cancelar edição in-place de nó
+    {
+        let app_weak = app_weak.clone();
+        let canvas_arc = Arc::clone(&canvas_arc);
+        app.on_canvas_node_edit_cancelled(move |_node_id| {
+            if let Ok(mut cc) = canvas_arc.lock() {
+                cc.cancel_editing_node();
+                if let Some(w) = app_weak.upgrade() {
+                    let (nodes, edges) = cc.to_visual_models();
+                    w.set_canvas_nodes(ModelRc::new(VecModel::from(to_slint_canvas_nodes(&nodes))));
+                    w.set_canvas_edges(ModelRc::new(VecModel::from(to_slint_canvas_edges(&edges))));
+                }
             }
         });
     }

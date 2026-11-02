@@ -161,6 +161,9 @@ export component AppWindow inherits Window {
     callback canvas_node_dragged(string, float, float);
     callback canvas_node_released(string);
     callback canvas_node_double_clicked(string);
+    callback canvas_node_edit_started(string);
+    callback canvas_node_edit_applied(string, string);
+    callback canvas_node_edit_cancelled(string);
     callback canvas_panned(float, float);
     callback canvas_zoom_in();
     callback canvas_zoom_out();
@@ -541,6 +544,9 @@ export component AppWindow inherits Window {
                     node_dragged(id, dx, dy) => { root.canvas_node_dragged(id, dx, dy); }
                     node_released(id) => { root.canvas_node_released(id); }
                     node_double_clicked(id) => { root.canvas_node_double_clicked(id); }
+                    node_edit_started(id) => { root.canvas_node_edit_started(id); }
+                    node_edit_applied(id, text) => { root.canvas_node_edit_applied(id, text); }
+                    node_edit_cancelled(id) => { root.canvas_node_edit_cancelled(id); }
                     canvas_panned(dx, dy) => { root.canvas_panned(dx, dy); }
                     zoom_in => { root.canvas_zoom_in(); }
                     zoom_out => { root.canvas_zoom_out(); }

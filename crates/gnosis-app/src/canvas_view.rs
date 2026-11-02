@@ -32,6 +32,7 @@ pub struct CanvasNodeVisual {
     pub content: String,
     pub subpath: String,
     pub is_selected: bool,
+    pub is_editing: bool,
 }
 
 /// Dados visuais projetados de uma aresta/conexão entre dois nós.
@@ -56,6 +57,7 @@ pub struct CanvasViewController {
     pub camera_y: f32,
     pub zoom: f32,
     pub selected_node_id: Option<String>,
+    pub editing_node_id: Option<String>,
     pub active_file_path: Option<PathBuf>,
     pub is_modified: bool,
 }
@@ -69,6 +71,7 @@ impl CanvasViewController {
             camera_y: 150.0,
             zoom: 1.0,
             selected_node_id: None,
+            editing_node_id: None,
             active_file_path: None,
             is_modified: false,
         }
@@ -312,6 +315,57 @@ impl CanvasViewController {
         id
     }
 
+    /// Adiciona um novo cartão de texto em uma coordenada de tela específica (ex: cursor do mouse).
+    pub fn add_text_card_at(&mut self, text: &str, screen_x: f32, screen_y: f32) -> String {
+        let count = self.canvas_data.node_count() + 1;
+        let id = format!("text_{}", count);
+
+        let zoom = if self.zoom > 0.01 { self.zoom } else { 1.0 };
+        let world_x = ((screen_x - self.camera_x) / zoom) as i32;
+        let world_y = ((screen_y - self.camera_y) / zoom) as i32;
+
+        self.canvas_data.add_node(CanvasNode::Text(TextNode {
+            id: id.clone(),
+            x: world_x,
+            y: world_y,
+            width: 260,
+            height: 120,
+            text: text.to_string(),
+            color: None,
+            extra: HashMap::new(),
+        }));
+
+        self.selected_node_id = Some(id.clone());
+        self.is_modified = true;
+        id
+    }
+
+    /// Inicia a edição in-place do nó informado (apenas nós de texto).
+    pub fn start_editing_node(&mut self, id: &str) {
+        if let Some(CanvasNode::Text(_)) = self.canvas_data.get_node(id) {
+            self.editing_node_id = Some(id.to_string());
+            self.selected_node_id = Some(id.to_string());
+        }
+    }
+
+    /// Aplica o novo texto no nó de texto e encerra a edição in-place.
+    pub fn apply_node_edit(&mut self, id: &str, new_text: &str) -> bool {
+        if let Some(CanvasNode::Text(t)) = self.canvas_data.get_node_mut(id) {
+            t.text = new_text.to_string();
+            self.is_modified = true;
+            self.editing_node_id = None;
+            true
+        } else {
+            self.editing_node_id = None;
+            false
+        }
+    }
+
+    /// Cancela a edição in-place ativa sem alterar o conteúdo.
+    pub fn cancel_editing_node(&mut self) {
+        self.editing_node_id = None;
+    }
+
     /// Adiciona um novo cartão de nota no centro da visão atual.
     pub fn add_file_card(&mut self, file_path: &str) -> String {
         let count = self.canvas_data.node_count() + 1;
@@ -370,6 +424,7 @@ impl CanvasViewController {
             let screen_h = node.height() as f32 * self.zoom;
 
             let is_sel = self.selected_node_id.as_deref() == Some(node.id());
+            let is_edit = self.editing_node_id.as_deref() == Some(node.id());
 
             let (title, content, subpath) = match node {
                 CanvasNode::Text(t) => (String::new(), t.text.clone(), String::new()),
@@ -402,6 +457,7 @@ impl CanvasViewController {
                 content,
                 subpath,
                 is_selected: is_sel,
+                is_editing: is_edit,
             });
         }
 
@@ -745,5 +801,67 @@ mod tests {
         let post_zoom_node = ctrl.canvas_data.get_node(&card_id).expect("Nó deve existir");
         assert_eq!(post_zoom_node.x(), before_zoom_move_x + 20);
         assert_eq!(post_zoom_node.y(), before_zoom_move_y - 10);
+    }
+
+    #[test]
+    fn test_membrane_node_editing_in_place_and_positional_creation() {
+        let temp_dir = std::env::temp_dir().join(format!("gnosis_test_membrane_edit_{}", std::process::id()));
+        let _ = fs::create_dir_all(&temp_dir);
+        let membrana_path = temp_dir.join("EdicaoInPlace.membrana");
+
+        let mut ctrl = CanvasViewController::new(CanvasData::new());
+        ctrl.set_active_file_path(&membrana_path);
+
+        // 1. Criação posicional na coordenada (400, 250) da tela
+        ctrl.camera_x = 100.0;
+        ctrl.camera_y = 50.0;
+        ctrl.zoom = 1.0;
+        let card_id = ctrl.add_text_card_at("Axioma Original", 400.0, 250.0);
+
+        let node = ctrl.canvas_data.get_node(&card_id).expect("Nó deve existir");
+        assert_eq!(node.x(), 300); // 400 - 100 = 300
+        assert_eq!(node.y(), 200); // 250 - 50 = 200
+
+        // 2. Início de Edição In-Place
+        assert_eq!(ctrl.editing_node_id, None);
+        ctrl.start_editing_node(&card_id);
+        assert_eq!(ctrl.editing_node_id, Some(card_id.clone()));
+
+        // Projeção visual com is_editing == true
+        let (visual_nodes, _) = ctrl.to_visual_models();
+        let v_node = visual_nodes.iter().find(|n| n.id == card_id).expect("Visual node deve existir");
+        assert!(v_node.is_editing);
+        assert_eq!(v_node.content, "Axioma Original");
+
+        // 3. Aplicação da Edição com persistência
+        let ok = ctrl.apply_node_edit(&card_id, "Axioma Transmutado e Revelado");
+        assert!(ok);
+        assert_eq!(ctrl.editing_node_id, None);
+
+        let (visual_nodes_after, _) = ctrl.to_visual_models();
+        let v_node_after = visual_nodes_after.iter().find(|n| n.id == card_id).expect("Visual node deve existir");
+        assert!(!v_node_after.is_editing);
+        assert_eq!(v_node_after.content, "Axioma Transmutado e Revelado");
+
+        let save_res = ctrl.save_to_disk();
+        assert!(save_res.is_ok());
+
+        // 4. Recarrega do disco e valida conteúdo atualizado
+        let mut reloaded = CanvasViewController::new(CanvasData::new());
+        let _ = reloaded.load_from_file(&membrana_path);
+        let reloaded_node = reloaded.canvas_data.get_node(&card_id).expect("Nó recarregado");
+        if let CanvasNode::Text(t) = reloaded_node {
+            assert_eq!(t.text, "Axioma Transmutado e Revelado");
+        } else {
+            panic!("Tipo de nó incorreto");
+        }
+
+        // 5. Teste de cancelamento de edição
+        ctrl.start_editing_node(&card_id);
+        assert_eq!(ctrl.editing_node_id, Some(card_id.clone()));
+        ctrl.cancel_editing_node();
+        assert_eq!(ctrl.editing_node_id, None);
+
+        let _ = fs::remove_dir_all(&temp_dir);
     }
 }

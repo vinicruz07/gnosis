@@ -12,6 +12,7 @@ export struct CanvasNodeSlint {
     content: string,
     subpath: string,
     is_selected: bool,
+    is_editing: bool,
 }
 
 export struct CanvasEdgeSlint {
@@ -39,7 +40,11 @@ export component CanvasView inherits Rectangle {
     callback node_dragged(string, float, float);
     callback node_released(string);
     callback node_double_clicked(string);
+    callback node_edit_started(string);
+    callback node_edit_applied(string, string);
+    callback node_edit_cancelled(string);
     callback canvas_panned(float, float);
+    callback canvas_double_clicked(float, float);
     callback zoom_in();
     callback zoom_out();
     callback zoom_reset();
@@ -239,6 +244,24 @@ export component CanvasView inherits Rectangle {
                         }
                     }
 
+                    if (node.node_type == "text" && !node.is_editing): Rectangle {
+                        width: 18px;
+                        height: 18px;
+                        border-radius: 3px;
+                        background: touch_edit_node.has-hover ? Theme.surface_hover : transparent;
+
+                        Text {
+                            text: "✏️";
+                            font-size: 10px;
+                            vertical-alignment: center;
+                            horizontal-alignment: center;
+                        }
+
+                        touch_edit_node := TouchArea {
+                            clicked => { root.node_edit_started(node.id); }
+                        }
+                    }
+
                     if (node.node_type == "file"): Rectangle {
                         width: 18px;
                         height: 18px;
@@ -265,8 +288,68 @@ export component CanvasView inherits Rectangle {
                     background: Theme.border;
                 }
 
-                // Conteúdo do Cartão (Texto / Resumo / Subpath)
-                Flickable {
+                // Conteúdo do Cartão: Edição In-Place OU Exibição Normal
+                if (node.is_editing): VerticalLayout {
+                    spacing: 6px;
+                    vertical-stretch: 1;
+
+                    txt_edit := TextInput {
+                        text: node.content;
+                        color: Theme.text_primary;
+                        font-size: 12px;
+                        wrap: word-wrap;
+                        vertical-stretch: 1;
+                    }
+
+                    HorizontalLayout {
+                        alignment: end;
+                        spacing: 6px;
+                        height: 22px;
+
+                        Rectangle {
+                            width: 55px;
+                            height: 20px;
+                            border-radius: 3px;
+                            background: touch_cancel_edit.has-hover ? Theme.surface_hover : transparent;
+                            border-width: 1px;
+                            border-color: Theme.border;
+
+                            Text {
+                                text: "Cancelar";
+                                font-size: 10px;
+                                color: Theme.text_muted;
+                                vertical-alignment: center;
+                                horizontal-alignment: center;
+                            }
+
+                            touch_cancel_edit := TouchArea {
+                                clicked => { root.node_edit_cancelled(node.id); }
+                            }
+                        }
+
+                        Rectangle {
+                            width: 50px;
+                            height: 20px;
+                            border-radius: 3px;
+                            background: touch_save_edit.has-hover ? Theme.accent : Theme.accent;
+
+                            Text {
+                                text: "Salvar";
+                                font-size: 10px;
+                                color: #ffffff;
+                                font-weight: 600;
+                                vertical-alignment: center;
+                                horizontal-alignment: center;
+                            }
+
+                            touch_save_edit := TouchArea {
+                                clicked => { root.node_edit_applied(node.id, txt_edit.text); }
+                            }
+                        }
+                    }
+                }
+
+                if (!node.is_editing): Flickable {
                     vertical-stretch: 1;
 
                     Text {
@@ -279,8 +362,8 @@ export component CanvasView inherits Rectangle {
                 }
             }
 
-            // Área de toque para seleção e arraste do cartão
-            card_touch := TouchArea {
+            // Área de toque para seleção e arraste do cartão (ativo apenas quando não em edição)
+            if (!node.is_editing): card_touch := TouchArea {
                 property <length> last_node_x;
                 property <length> last_node_y;
 
