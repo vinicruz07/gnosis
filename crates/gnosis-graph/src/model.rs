@@ -305,6 +305,51 @@ impl KnowledgeGraph {
         self.graph.node_weight(*idx)
     }
 
+    /// Remove um nó do grafo e todas as arestas conectadas a ele.
+    pub fn remove_node(&mut self, node_id: &str) -> bool {
+        let Some(idx) = self.node_indices.remove(node_id) else {
+            return false;
+        };
+        self.graph.remove_node(idx);
+        self.rebuild_node_indices();
+        true
+    }
+
+    /// Reconstrói o mapa de índices dos nós após operações de remoção do petgraph.
+    fn rebuild_node_indices(&mut self) {
+        self.node_indices.clear();
+        for idx in self.graph.node_indices() {
+            if let Some(node) = self.graph.node_weight(idx) {
+                self.node_indices.insert(node.id.clone(), idx);
+            }
+        }
+    }
+
+    /// Remove uma ou mais arestas entre dois nós.
+    pub fn remove_edge(&mut self, source_id: &str, target_id: &str) -> bool {
+        let Some(&s_idx) = self.node_indices.get(source_id) else {
+            return false;
+        };
+        let Some(&t_idx) = self.node_indices.get(target_id) else {
+            return false;
+        };
+
+        let edge_ids: Vec<_> = self
+            .graph
+            .edges_connecting(s_idx, t_idx)
+            .map(|e| e.id())
+            .collect();
+
+        if edge_ids.is_empty() {
+            return false;
+        }
+
+        for edge_id in edge_ids {
+            self.graph.remove_edge(edge_id);
+        }
+        true
+    }
+
     /// Retorna a referência interna ao grafo `petgraph`.
     pub fn inner_graph(&self) -> &DiGraph<GraphNode, GraphEdge> {
         &self.graph
@@ -427,6 +472,36 @@ O Gnosis usa [[Notas/Rust.md]]."#;
 
         assert_eq!(central_backlinks.len(), 4_999);
         assert!(elapsed.as_micros() < 2_000, "Consulta de backlinks levou {:?}", elapsed);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_remove_node_and_edges() -> Result<()> {
+        let mut graph = KnowledgeGraph::new();
+        graph.add_or_update_node("N1", "Nó 1", NodeType::Note, None);
+        graph.add_or_update_node("N2", "Nó 2", NodeType::Note, None);
+        graph.add_or_update_node("N3", "Nó 3", NodeType::Note, None);
+
+        graph.add_edge("N1", "N2", EdgeType::WikiLink, None, 1.0)?;
+        graph.add_edge("N2", "N3", EdgeType::WikiLink, None, 1.0)?;
+
+        assert_eq!(graph.node_count(), 3);
+        assert_eq!(graph.edge_count(), 2);
+
+        // Remove aresta entre N1 e N2
+        let removed_edge = graph.remove_edge("N1", "N2");
+        assert!(removed_edge);
+        assert_eq!(graph.edge_count(), 1);
+
+        // Remove nó N2 (deve remover também a aresta N2 -> N3)
+        let removed_node = graph.remove_node("N2");
+        assert!(removed_node);
+        assert_eq!(graph.node_count(), 2);
+        assert_eq!(graph.edge_count(), 0);
+        assert!(graph.get_node("N2").is_none());
+        assert!(graph.get_node("N1").is_some());
+        assert!(graph.get_node("N3").is_some());
 
         Ok(())
     }

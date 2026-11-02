@@ -6,7 +6,7 @@ export struct GraphNodeSlint {
     x: float,
     y: float,
     radius: float,
-    color_hex: string,
+    color: color,
     is_pinned: bool,
 }
 
@@ -15,7 +15,7 @@ export struct GraphEdgeSlint {
     source_y: float,
     target_x: float,
     target_y: float,
-    color_hex: string,
+    color: color,
 }
 
 export component GraphCanvas inherits Rectangle {
@@ -24,22 +24,69 @@ export component GraphCanvas inherits Rectangle {
     in property <bool> is_sleeping: false;
     in property <bool> hide_orphans: false;
     in property <bool> hide_unresolved: false;
+    in-out property <string> selected_node_id: "";
+    in-out property <string> connecting_source_id: "";
 
     callback node_clicked(string);
     callback node_dragged(string, float, float);
     callback node_released(string);
+    callback canvas_panned(float, float);
     callback restart_physics();
     callback toggle_hide_orphans();
     callback toggle_hide_unresolved();
     callback zoom_in();
     callback zoom_out();
+    callback zoom_reset();
+    callback unpin_node_requested(string);
+    callback add_node_requested();
+    callback delete_node_requested(string);
+    callback connect_nodes_requested(string, string);
+    callback set_node_color_requested(string, string);
+    callback adjust_node_radius_requested(string, float);
+    callback save_grafo_requested();
 
     background: Theme.background;
     clip: true;
 
+    // 0. Fundo interativo do Grafo para captura de Pan e Zoom
+    graph_touch := TouchArea {
+        width: 100%;
+        height: 100%;
+        property <length> last_x;
+        property <length> last_y;
+
+        pointer-event(event) => {
+            if (event.kind == PointerEventKind.down) {
+                last_x = self.mouse-x;
+                last_y = self.mouse-y;
+            }
+        }
+
+        moved => {
+            root.canvas_panned((self.mouse-x - last_x) / 1px, (self.mouse-y - last_y) / 1px);
+            last_x = self.mouse-x;
+            last_y = self.mouse-y;
+        }
+
+        scroll-event(event) => {
+            if (event.delta-y > 0) {
+                root.zoom_in();
+            } else if (event.delta-y < 0) {
+                root.zoom_out();
+            }
+            accept
+        }
+
+        clicked => {
+            root.connecting_source_id = "";
+            root.selected_node_id = "";
+            root.node_clicked("");
+        }
+    }
+
     // 1. Camada de Arestas Elásticas (Renderizadas via segmentos de Path)
     for edge in root.edges: Path {
-        stroke: #45475a;
+        stroke: edge.color;
         stroke-width: 1.5px;
         MoveTo { x: edge.source_x; y: edge.source_y; }
         LineTo { x: edge.target_x; y: edge.target_y; }
@@ -52,9 +99,9 @@ export component GraphCanvas inherits Rectangle {
         width: node.radius * 2px;
         height: node.radius * 2px;
         border-radius: node.radius * 1px;
-        background: #89b4fa;
-        border-width: node.is_pinned ? 2px : 0px;
-        border-color: #ffffff;
+        background: node.color;
+        border-width: (node.id == root.selected_node_id || node.id == root.connecting_source_id) ? 3px : (node.is_pinned ? 2px : 0px);
+        border-color: (node.id == root.connecting_source_id) ? #f9e2af : (node.id == root.selected_node_id ? #ffffff : (node.is_pinned ? #f38ba8 : transparent));
 
         // Rótulo do nó posicionado abaixo da partícula
         Text {
@@ -66,9 +113,36 @@ export component GraphCanvas inherits Rectangle {
             x: (parent.width - self.width) / 2;
         }
 
-        TouchArea {
+        node_touch := TouchArea {
+            property <length> last_node_x;
+            property <length> last_node_y;
+
+            pointer-event(event) => {
+                if (event.kind == PointerEventKind.down) {
+                    last_node_x = self.mouse-x;
+                    last_node_y = self.mouse-y;
+                }
+                if (event.kind == PointerEventKind.up || event.kind == PointerEventKind.cancel) {
+                    root.node_released(node.id);
+                }
+            }
+
             clicked => {
-                root.node_clicked(node.id);
+                if (root.connecting_source_id != "") {
+                    if (root.connecting_source_id != node.id) {
+                        root.connect_nodes_requested(root.connecting_source_id, node.id);
+                    }
+                    root.connecting_source_id = "";
+                } else {
+                    root.selected_node_id = node.id;
+                    root.node_clicked(node.id);
+                }
+            }
+
+            moved => {
+                root.node_dragged(node.id, (self.mouse-x - last_node_x) / 1px, (self.mouse-y - last_node_y) / 1px);
+                last_node_x = self.mouse-x;
+                last_node_y = self.mouse-y;
             }
         }
     }
@@ -169,6 +243,89 @@ export component GraphCanvas inherits Rectangle {
                     clicked => { root.zoom_out(); }
                 }
             }
+
+            // Botão Reset Zoom (1:1)
+            Rectangle {
+                width: 32px;
+                height: 24px;
+                border-radius: 4px;
+                background: touch_zrst.has-hover ? Theme.surface_hover : transparent;
+
+                Text {
+                    text: "100%";
+                    color: Theme.text_muted;
+                    font-size: 10px;
+                    vertical-alignment: center;
+                    horizontal-alignment: center;
+                }
+
+                touch_zrst := TouchArea {
+                    clicked => { root.zoom_reset(); }
+                }
+            }
+
+            Rectangle {
+                width: 1px;
+                height: 16px;
+                background: Theme.border;
+                y: (parent.height - self.height) / 2;
+            }
+
+            // Botão Adicionar Nó
+            Rectangle {
+                height: 24px;
+                border-radius: 4px;
+                background: touch_add.has-hover ? Theme.surface_hover : Theme.surface;
+                border-width: 1px;
+                border-color: Theme.border;
+
+                HorizontalLayout {
+                    padding-left: 8px;
+                    padding-right: 8px;
+                    spacing: 4px;
+                    alignment: center;
+
+                    Text {
+                        text: "➕ Nó";
+                        color: Theme.text_primary;
+                        font-size: 11px;
+                        font-weight: 600;
+                        vertical-alignment: center;
+                    }
+                }
+
+                touch_add := TouchArea {
+                    clicked => { root.add_node_requested(); }
+                }
+            }
+
+            // Botão Salvar .grafo
+            Rectangle {
+                height: 24px;
+                border-radius: 4px;
+                background: touch_save_g.has-hover ? Theme.surface_hover : Theme.surface;
+                border-width: 1px;
+                border-color: Theme.border;
+
+                HorizontalLayout {
+                    padding-left: 8px;
+                    padding-right: 8px;
+                    spacing: 4px;
+                    alignment: center;
+
+                    Text {
+                        text: "💾 .grafo";
+                        color: Theme.accent;
+                        font-size: 11px;
+                        font-weight: 600;
+                        vertical-alignment: center;
+                    }
+                }
+
+                touch_save_g := TouchArea {
+                    clicked => { root.save_grafo_requested(); }
+                }
+            }
         }
     }
 
@@ -235,6 +392,312 @@ export component GraphCanvas inherits Rectangle {
 
                 TouchArea {
                     clicked => { root.toggle_hide_unresolved(); }
+                }
+            }
+        }
+    }
+
+    // 5. Barra Flutuante de Estilização e Manipulação do Nó Selecionado (Rodapé)
+    if (root.selected_node_id != ""): Rectangle {
+        x: (parent.width - self.width) / 2;
+        y: parent.height - self.height - 20px;
+        height: 42px;
+        background: Theme.sidebar_bg;
+        border-radius: 8px;
+        border-width: 1px;
+        border-color: Theme.border;
+
+        HorizontalLayout {
+            padding-left: 12px;
+            padding-right: 12px;
+            spacing: 10px;
+            alignment: center;
+
+            // Identificação do Nó
+            Text {
+                text: "🏷️ " + root.selected_node_id;
+                color: Theme.text_primary;
+                font-size: 11px;
+                font-weight: 600;
+                vertical-alignment: center;
+                max-width: 120px;
+                overflow: elide;
+            }
+
+            Rectangle {
+                width: 1px;
+                height: 20px;
+                background: Theme.border;
+                y: (parent.height - self.height) / 2;
+            }
+
+            // Ajuste de Raio/Tamanho do Disco
+            Text {
+                text: "Tamanho:";
+                color: Theme.text_muted;
+                font-size: 11px;
+                vertical-alignment: center;
+            }
+
+            Rectangle {
+                width: 22px;
+                height: 22px;
+                border-radius: 4px;
+                background: touch_rad_dec.has-hover ? Theme.surface_hover : Theme.surface;
+                border-width: 1px;
+                border-color: Theme.border;
+
+                Text {
+                    text: "➖";
+                    font-size: 9px;
+                    vertical-alignment: center;
+                    horizontal-alignment: center;
+                }
+
+                touch_rad_dec := TouchArea {
+                    clicked => { root.adjust_node_radius_requested(root.selected_node_id, -3.0); }
+                }
+            }
+
+            Rectangle {
+                width: 22px;
+                height: 22px;
+                border-radius: 4px;
+                background: touch_rad_inc.has-hover ? Theme.surface_hover : Theme.surface;
+                border-width: 1px;
+                border-color: Theme.border;
+
+                Text {
+                    text: "➕";
+                    font-size: 9px;
+                    vertical-alignment: center;
+                    horizontal-alignment: center;
+                }
+
+                touch_rad_inc := TouchArea {
+                    clicked => { root.adjust_node_radius_requested(root.selected_node_id, 3.0); }
+                }
+            }
+
+            Rectangle {
+                width: 1px;
+                height: 20px;
+                background: Theme.border;
+                y: (parent.height - self.height) / 2;
+            }
+
+            // Paleta de Cores
+            Text {
+                text: "Cor:";
+                color: Theme.text_muted;
+                font-size: 11px;
+                vertical-alignment: center;
+            }
+
+            // Azul
+            Rectangle {
+                width: 16px;
+                height: 16px;
+                border-radius: 8px;
+                background: #89b4fa;
+                border-width: c_blue.has-hover ? 2px : 0px;
+                border-color: #ffffff;
+                c_blue := TouchArea {
+                    clicked => { root.set_node_color_requested(root.selected_node_id, "#89b4fa"); }
+                }
+            }
+
+            // Verde
+            Rectangle {
+                width: 16px;
+                height: 16px;
+                border-radius: 8px;
+                background: #a6e3a1;
+                border-width: c_green.has-hover ? 2px : 0px;
+                border-color: #ffffff;
+                c_green := TouchArea {
+                    clicked => { root.set_node_color_requested(root.selected_node_id, "#a6e3a1"); }
+                }
+            }
+
+            // Amarelo
+            Rectangle {
+                width: 16px;
+                height: 16px;
+                border-radius: 8px;
+                background: #f9e2af;
+                border-width: c_yellow.has-hover ? 2px : 0px;
+                border-color: #ffffff;
+                c_yellow := TouchArea {
+                    clicked => { root.set_node_color_requested(root.selected_node_id, "#f9e2af"); }
+                }
+            }
+
+            // Roxo
+            Rectangle {
+                width: 16px;
+                height: 16px;
+                border-radius: 8px;
+                background: #cba6f7;
+                border-width: c_purple.has-hover ? 2px : 0px;
+                border-color: #ffffff;
+                c_purple := TouchArea {
+                    clicked => { root.set_node_color_requested(root.selected_node_id, "#cba6f7"); }
+                }
+            }
+
+            // Vermelho
+            Rectangle {
+                width: 16px;
+                height: 16px;
+                border-radius: 8px;
+                background: #f38ba8;
+                border-width: c_red.has-hover ? 2px : 0px;
+                border-color: #ffffff;
+                c_red := TouchArea {
+                    clicked => { root.set_node_color_requested(root.selected_node_id, "#f38ba8"); }
+                }
+            }
+
+            // Laranja
+            Rectangle {
+                width: 16px;
+                height: 16px;
+                border-radius: 8px;
+                background: #fab387;
+                border-width: c_orange.has-hover ? 2px : 0px;
+                border-color: #ffffff;
+                c_orange := TouchArea {
+                    clicked => { root.set_node_color_requested(root.selected_node_id, "#fab387"); }
+                }
+            }
+
+            // Ciano
+            Rectangle {
+                width: 16px;
+                height: 16px;
+                border-radius: 8px;
+                background: #94e2d5;
+                border-width: c_cyan.has-hover ? 2px : 0px;
+                border-color: #ffffff;
+                c_cyan := TouchArea {
+                    clicked => { root.set_node_color_requested(root.selected_node_id, "#94e2d5"); }
+                }
+            }
+
+            Rectangle {
+                width: 1px;
+                height: 20px;
+                background: Theme.border;
+                y: (parent.height - self.height) / 2;
+            }
+
+            // Botão Conectar (🔗 Ligar)
+            Rectangle {
+                height: 24px;
+                border-radius: 4px;
+                background: (root.connecting_source_id == root.selected_node_id) ? Theme.accent : (touch_conn.has-hover ? Theme.surface_hover : Theme.surface);
+                border-width: 1px;
+                border-color: Theme.border;
+
+                HorizontalLayout {
+                    padding-left: 6px;
+                    padding-right: 6px;
+                    spacing: 4px;
+                    alignment: center;
+
+                    Text {
+                        text: (root.connecting_source_id == root.selected_node_id) ? "👉 Clique no destino" : "🔗 Ligar";
+                        color: (root.connecting_source_id == root.selected_node_id) ? #11111b : Theme.text_primary;
+                        font-size: 11px;
+                        font-weight: 600;
+                        vertical-alignment: center;
+                    }
+                }
+
+                touch_conn := TouchArea {
+                    clicked => {
+                        if (root.connecting_source_id == root.selected_node_id) {
+                            root.connecting_source_id = "";
+                        } else {
+                            root.connecting_source_id = root.selected_node_id;
+                        }
+                    }
+                }
+            }
+
+            // Botão Desafixar
+            Rectangle {
+                height: 24px;
+                border-radius: 4px;
+                background: touch_unp.has-hover ? Theme.surface_hover : Theme.surface;
+                border-width: 1px;
+                border-color: Theme.border;
+
+                HorizontalLayout {
+                    padding-left: 6px;
+                    padding-right: 6px;
+                    alignment: center;
+
+                    Text {
+                        text: "🔓 Soltar";
+                        color: Theme.text_secondary;
+                        font-size: 10px;
+                        vertical-alignment: center;
+                    }
+                }
+
+                touch_unp := TouchArea {
+                    clicked => { root.unpin_node_requested(root.selected_node_id); }
+                }
+            }
+
+            // Botão Excluir Nó
+            Rectangle {
+                height: 24px;
+                border-radius: 4px;
+                background: touch_del.has-hover ? #f38ba8 : Theme.surface;
+                border-width: 1px;
+                border-color: Theme.border;
+
+                HorizontalLayout {
+                    padding-left: 6px;
+                    padding-right: 6px;
+                    alignment: center;
+
+                    Text {
+                        text: "🗑️";
+                        color: touch_del.has-hover ? #11111b : #f38ba8;
+                        font-size: 11px;
+                        vertical-alignment: center;
+                    }
+                }
+
+                touch_del := TouchArea {
+                    clicked => { root.delete_node_requested(root.selected_node_id); }
+                }
+            }
+
+            // Botão Fechar Seleção (❌)
+            Rectangle {
+                width: 20px;
+                height: 20px;
+                border-radius: 10px;
+                background: touch_close.has-hover ? Theme.surface_hover : transparent;
+
+                Text {
+                    text: "✕";
+                    color: Theme.text_muted;
+                    font-size: 10px;
+                    vertical-alignment: center;
+                    horizontal-alignment: center;
+                }
+
+                touch_close := TouchArea {
+                    clicked => {
+                        root.connecting_source_id = "";
+                        root.selected_node_id = "";
+                    }
                 }
             }
         }

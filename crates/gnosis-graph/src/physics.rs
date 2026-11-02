@@ -305,6 +305,16 @@ impl GraphPhysicsSimulator {
         false
     }
 
+    /// Retorna se o nó está atualmente fixado (`is_pinned`).
+    pub fn is_pinned(&self, id: &str) -> bool {
+        if let Some(&idx) = self.id_to_index.get(id) {
+            if let Some(p) = self.particles.get(idx) {
+                return p.is_pinned;
+            }
+        }
+        false
+    }
+
     /// Retorna a posição 2D atual de um nó pelo seu identificador.
     pub fn get_position(&self, id: &str) -> Option<Point2D> {
         let &idx = self.id_to_index.get(id)?;
@@ -327,6 +337,64 @@ impl GraphPhysicsSimulator {
     /// Define a posição 2D de um nó pelo seu identificador e desperta a simulação.
     pub fn set_position(&mut self, id: &str, pos: Point2D) -> bool {
         self.pin_node(id, pos)
+    }
+
+    /// Sincroniza o simulador com a estrutura atual de um `KnowledgeGraph`,
+    /// preservando posições espaciais, velocidades e estado de fixação (`is_pinned`) dos nós existentes.
+    pub fn sync_with_graph(&mut self, graph: &KnowledgeGraph) {
+        let petgraph_ref = graph.inner_graph();
+        let mut new_particles = Vec::with_capacity(graph.node_count());
+        let mut new_id_to_index = HashMap::with_capacity(graph.node_count());
+
+        for (i, node_idx) in petgraph_ref.node_indices().enumerate() {
+            if let Some(node) = petgraph_ref.node_weight(node_idx) {
+                if let Some(&old_idx) = self.id_to_index.get(&node.id) {
+                    if let Some(old_p) = self.particles.get(old_idx) {
+                        new_id_to_index.insert(node.id.clone(), new_particles.len());
+                        new_particles.push(old_p.clone());
+                        continue;
+                    }
+                }
+
+                // Novo nó: posiciona em espiral suave em torno do centro
+                let angle = i as f32 * 0.5;
+                let radius = 20.0 + (i as f32 * 8.0).sqrt() * 12.0;
+                let initial_pos = Point2D::new(radius * angle.cos(), radius * angle.sin());
+
+                new_id_to_index.insert(node.id.clone(), new_particles.len());
+                new_particles.push(ParticleNode {
+                    id: node.id.clone(),
+                    pos: initial_pos,
+                    vel: Point2D::ZERO,
+                    force: Point2D::ZERO,
+                    mass: 1.0,
+                    is_pinned: false,
+                });
+            }
+        }
+
+        // Mapeia novas arestas
+        let mut new_edges = Vec::with_capacity(graph.edge_count());
+        for edge_ref in petgraph_ref.edge_references() {
+            if let (Some(source_node), Some(target_node)) = (
+                petgraph_ref.node_weight(edge_ref.source()),
+                petgraph_ref.node_weight(edge_ref.target()),
+            ) {
+                if let (Some(&u), Some(&v)) = (
+                    new_id_to_index.get(&source_node.id),
+                    new_id_to_index.get(&target_node.id),
+                ) {
+                    if u != v {
+                        new_edges.push((u, v, edge_ref.weight().weight));
+                    }
+                }
+            }
+        }
+
+        self.particles = new_particles;
+        self.id_to_index = new_id_to_index;
+        self.edges = new_edges;
+        self.wake_up();
     }
 }
 
@@ -398,5 +466,28 @@ mod tests {
         assert!(pinned);
         assert!(!sim.is_sleeping());
         assert_eq!(sim.get_position("Node1"), Some(Point2D::new(100.0, 100.0)));
+    }
+
+    #[test]
+    fn test_sync_with_graph_preserves_existing_positions() {
+        let mut graph = KnowledgeGraph::new();
+        graph.add_or_update_node("A", "A", NodeType::Note, None);
+        graph.add_or_update_node("B", "B", NodeType::Note, None);
+        let _ = graph.add_edge("A", "B", EdgeType::WikiLink, None, 1.0);
+
+        let mut sim = GraphPhysicsSimulator::from_knowledge_graph(&graph, PhysicsConfig::default());
+        sim.pin_node("A", Point2D::new(50.0, 75.0));
+
+        // Adiciona novo nó C e aresta B -> C
+        graph.add_or_update_node("C", "C", NodeType::Note, None);
+        let _ = graph.add_edge("B", "C", EdgeType::WikiLink, None, 1.0);
+
+        sim.sync_with_graph(&graph);
+
+        // Posição de A e estado de pin devem permanecer
+        assert_eq!(sim.get_position("A"), Some(Point2D::new(50.0, 75.0)));
+        assert!(sim.is_pinned("A"));
+        // C deve existir no simulador
+        assert!(sim.get_position("C").is_some());
     }
 }

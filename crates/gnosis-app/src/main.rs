@@ -141,8 +141,19 @@ fn to_slint_stickers(items: &[StickerItem]) -> Vec<StickerItemSlint> {
         .collect()
 }
 
-fn to_slint_graph_nodes(nodes: &[GraphNodeVisual]) -> Vec<GraphNodeSlint> {
+fn parse_hex_color(hex: &str) -> slint::Color {
+    let clean = hex.trim_start_matches('#');
+    if clean.len() == 6 {
+        let r = u8::from_str_radix(&clean[0..2], 16).unwrap_or(137);
+        let g = u8::from_str_radix(&clean[2..4], 16).unwrap_or(180);
+        let b = u8::from_str_radix(&clean[4..6], 16).unwrap_or(250);
+        slint::Color::from_argb_u8(255, r, g, b)
+    } else {
+        slint::Color::from_argb_u8(255, 137, 180, 250)
+    }
+}
 
+fn to_slint_graph_nodes(nodes: &[GraphNodeVisual]) -> Vec<GraphNodeSlint> {
     nodes
         .iter()
         .map(|n| GraphNodeSlint {
@@ -151,7 +162,7 @@ fn to_slint_graph_nodes(nodes: &[GraphNodeVisual]) -> Vec<GraphNodeSlint> {
             x: n.x,
             y: n.y,
             radius: n.radius,
-            color_hex: n.color_hex.as_str().into(),
+            color: parse_hex_color(&n.color_hex),
             is_pinned: n.is_pinned,
         })
         .collect()
@@ -165,7 +176,7 @@ fn to_slint_graph_edges(edges: &[GraphEdgeVisual]) -> Vec<GraphEdgeSlint> {
             source_y: e.source_y,
             target_x: e.target_x,
             target_y: e.target_y,
-            color_hex: e.color_hex.as_str().into(),
+            color: parse_hex_color(&e.color_hex),
         })
         .collect()
 }
@@ -475,59 +486,24 @@ fn main() {
         });
     }
 
-    // Callback: Clique em nó do Grafo (Abre nota no editor)
+    // Callback: Clique em nó do Grafo (Seleciona nó para edição, cor, arestas ou pin)
     {
         let app_weak = app_weak.clone();
-        let tab_arc = Arc::clone(&tab_arc);
-        let editor_arc = Arc::clone(&editor_arc);
-        let state_arc = Arc::clone(&state_arc);
-
         app.on_graph_node_clicked(move |node_id| {
-            let path = node_id.as_str();
-            let title = path.rsplit('/').next().unwrap_or(path).trim_end_matches(".md");
-
-            let content = format!("# {}\n\nNota aberta a partir do nó do Grafo de Conhecimento.", title);
-
-            let mut icon_opt: Option<String> = None;
-            if let Ok(mut st) = state_arc.lock() {
-                st.select_note(path, &content);
-                if !st.active_note_icon.is_empty() {
-                    icon_opt = Some(st.active_note_icon.clone());
-                }
-            }
-            if let Ok(mut tm) = tab_arc.lock() {
-                tm.open_note_with_icon(path, title, icon_opt.clone());
-            }
-            if let Ok(mut ed) = editor_arc.lock() {
-                ed.set_content(&content);
-            }
-
             if let Some(w) = app_weak.upgrade() {
-                w.set_is_graph_view(false);
-                w.set_active_note_title(title.into());
-                w.set_active_note_icon(icon_opt.as_deref().unwrap_or("").into());
-                w.set_active_note_content(content.as_str().into());
-
-                if let Ok(tm) = tab_arc.lock() {
-                    let tabs = to_slint_tabs(tm.active_pane());
-                    w.set_tabs(ModelRc::new(VecModel::from(tabs)));
-                }
-
-                if let Ok(ed) = editor_arc.lock() {
-                    let ast = to_slint_ast_blocks(&ed.generate_render_blocks());
-                    w.set_ast_blocks(ModelRc::new(VecModel::from(ast)));
-                }
+                w.set_graph_selected_node_id(node_id.clone());
             }
         });
     }
 
-    // Callback: Arrastar nó do Grafo com o mouse
+    // Callback: Arrastar nó do Grafo com o mouse aplicando deltas
     {
         let app_weak = app_weak.clone();
         let graph_arc = Arc::clone(&graph_arc);
-        app.on_graph_node_dragged(move |id, x, y| {
+        app.on_graph_node_dragged(move |id, dx, dy| {
             if let Ok(mut gc) = graph_arc.lock() {
-                gc.pin_node(id.as_str(), x, y);
+                gc.drag_node(id.as_str(), dx, dy);
+                gc.wake_up();
                 gc.step();
 
                 if let Some(w) = app_weak.upgrade() {
@@ -544,9 +520,26 @@ fn main() {
     // Callback: Soltar nó do Grafo
     {
         let graph_arc = Arc::clone(&graph_arc);
-        app.on_graph_node_released(move |id| {
+        app.on_graph_node_released(move |_id| {
             if let Ok(mut gc) = graph_arc.lock() {
-                gc.unpin_node(id.as_str());
+                gc.wake_up();
+            }
+        });
+    }
+
+    // Callback: Pan (arrasto do fundo da tela do Grafo)
+    {
+        let app_weak = app_weak.clone();
+        let graph_arc = Arc::clone(&graph_arc);
+        app.on_graph_panned(move |dx, dy| {
+            if let Ok(mut gc) = graph_arc.lock() {
+                gc.pan(dx, dy);
+                if let Some(w) = app_weak.upgrade() {
+                    let nodes = to_slint_graph_nodes(&gc.get_visual_nodes(400.0, 300.0));
+                    let edges = to_slint_graph_edges(&gc.get_visual_edges(400.0, 300.0));
+                    w.set_graph_nodes(ModelRc::new(VecModel::from(nodes)));
+                    w.set_graph_edges(ModelRc::new(VecModel::from(edges)));
+                }
             }
         });
     }
@@ -622,7 +615,7 @@ fn main() {
         let graph_arc = Arc::clone(&graph_arc);
         app.on_graph_zoom_in(move || {
             if let Ok(mut gc) = graph_arc.lock() {
-                gc.zoom = (gc.zoom + 0.15).min(2.5);
+                gc.zoom_in();
                 if let Some(w) = app_weak.upgrade() {
                     let nodes = to_slint_graph_nodes(&gc.get_visual_nodes(400.0, 300.0));
                     let edges = to_slint_graph_edges(&gc.get_visual_edges(400.0, 300.0));
@@ -639,12 +632,170 @@ fn main() {
         let graph_arc = Arc::clone(&graph_arc);
         app.on_graph_zoom_out(move || {
             if let Ok(mut gc) = graph_arc.lock() {
-                gc.zoom = (gc.zoom - 0.15).max(0.4);
+                gc.zoom_out();
                 if let Some(w) = app_weak.upgrade() {
                     let nodes = to_slint_graph_nodes(&gc.get_visual_nodes(400.0, 300.0));
                     let edges = to_slint_graph_edges(&gc.get_visual_edges(400.0, 300.0));
                     w.set_graph_nodes(ModelRc::new(VecModel::from(nodes)));
                     w.set_graph_edges(ModelRc::new(VecModel::from(edges)));
+                }
+            }
+        });
+    }
+
+    // Callback: Zoom Reset (100%)
+    {
+        let app_weak = app_weak.clone();
+        let graph_arc = Arc::clone(&graph_arc);
+        app.on_graph_zoom_reset(move || {
+            if let Ok(mut gc) = graph_arc.lock() {
+                gc.zoom_reset();
+                if let Some(w) = app_weak.upgrade() {
+                    let nodes = to_slint_graph_nodes(&gc.get_visual_nodes(400.0, 300.0));
+                    let edges = to_slint_graph_edges(&gc.get_visual_edges(400.0, 300.0));
+                    w.set_graph_nodes(ModelRc::new(VecModel::from(nodes)));
+                    w.set_graph_edges(ModelRc::new(VecModel::from(edges)));
+                }
+            }
+        });
+    }
+
+    // Callback: Desafixar nó do Grafo
+    {
+        let app_weak = app_weak.clone();
+        let graph_arc = Arc::clone(&graph_arc);
+        app.on_graph_unpin_node_requested(move |id| {
+            if let Ok(mut gc) = graph_arc.lock() {
+                gc.unpin_node(id.as_str());
+                gc.wake_up();
+                for _ in 0..15 {
+                    gc.step();
+                }
+                if let Some(w) = app_weak.upgrade() {
+                    let nodes = to_slint_graph_nodes(&gc.get_visual_nodes(400.0, 300.0));
+                    let edges = to_slint_graph_edges(&gc.get_visual_edges(400.0, 300.0));
+                    w.set_graph_nodes(ModelRc::new(VecModel::from(nodes)));
+                    w.set_graph_edges(ModelRc::new(VecModel::from(edges)));
+                    w.set_graph_is_sleeping(gc.is_sleeping());
+                }
+            }
+        });
+    }
+
+    // Callback: Adicionar novo nó ao Grafo
+    {
+        let app_weak = app_weak.clone();
+        let graph_arc = Arc::clone(&graph_arc);
+        app.on_graph_add_node_requested(move || {
+            if let Ok(mut gc) = graph_arc.lock() {
+                let count = gc.full_graph.node_count() + 1;
+                let id = format!("Conceito_{}", count);
+                let label = format!("Novo Conceito {}", count);
+                gc.add_custom_node(&id, &label, NodeType::Note);
+                gc.wake_up();
+                for _ in 0..15 {
+                    gc.step();
+                }
+                if let Some(w) = app_weak.upgrade() {
+                    w.set_graph_selected_node_id(id.into());
+                    let nodes = to_slint_graph_nodes(&gc.get_visual_nodes(400.0, 300.0));
+                    let edges = to_slint_graph_edges(&gc.get_visual_edges(400.0, 300.0));
+                    w.set_graph_nodes(ModelRc::new(VecModel::from(nodes)));
+                    w.set_graph_edges(ModelRc::new(VecModel::from(edges)));
+                    w.set_graph_is_sleeping(gc.is_sleeping());
+                }
+            }
+        });
+    }
+
+    // Callback: Excluir nó selecionado do Grafo
+    {
+        let app_weak = app_weak.clone();
+        let graph_arc = Arc::clone(&graph_arc);
+        app.on_graph_delete_node_requested(move |id| {
+            if let Ok(mut gc) = graph_arc.lock() {
+                gc.remove_node(id.as_str());
+                gc.wake_up();
+                for _ in 0..15 {
+                    gc.step();
+                }
+                if let Some(w) = app_weak.upgrade() {
+                    w.set_graph_selected_node_id("".into());
+                    let nodes = to_slint_graph_nodes(&gc.get_visual_nodes(400.0, 300.0));
+                    let edges = to_slint_graph_edges(&gc.get_visual_edges(400.0, 300.0));
+                    w.set_graph_nodes(ModelRc::new(VecModel::from(nodes)));
+                    w.set_graph_edges(ModelRc::new(VecModel::from(edges)));
+                    w.set_graph_is_sleeping(gc.is_sleeping());
+                }
+            }
+        });
+    }
+
+    // Callback: Conectar dois nós através de uma aresta
+    {
+        let app_weak = app_weak.clone();
+        let graph_arc = Arc::clone(&graph_arc);
+        app.on_graph_connect_nodes_requested(move |src, tgt| {
+            if let Ok(mut gc) = graph_arc.lock() {
+                gc.connect_nodes(src.as_str(), tgt.as_str());
+                gc.wake_up();
+                for _ in 0..15 {
+                    gc.step();
+                }
+                if let Some(w) = app_weak.upgrade() {
+                    let nodes = to_slint_graph_nodes(&gc.get_visual_nodes(400.0, 300.0));
+                    let edges = to_slint_graph_edges(&gc.get_visual_edges(400.0, 300.0));
+                    w.set_graph_nodes(ModelRc::new(VecModel::from(nodes)));
+                    w.set_graph_edges(ModelRc::new(VecModel::from(edges)));
+                    w.set_graph_is_sleeping(gc.is_sleeping());
+                }
+            }
+        });
+    }
+
+    // Callback: Alterar cor do disco do nó selecionado
+    {
+        let app_weak = app_weak.clone();
+        let graph_arc = Arc::clone(&graph_arc);
+        app.on_graph_set_node_color_requested(move |id, color_hex| {
+            if let Ok(mut gc) = graph_arc.lock() {
+                gc.set_node_color(id.as_str(), color_hex.as_str());
+                if let Some(w) = app_weak.upgrade() {
+                    let nodes = to_slint_graph_nodes(&gc.get_visual_nodes(400.0, 300.0));
+                    w.set_graph_nodes(ModelRc::new(VecModel::from(nodes)));
+                }
+            }
+        });
+    }
+
+    // Callback: Ajustar raio/tamanho do disco do nó selecionado
+    {
+        let app_weak = app_weak.clone();
+        let graph_arc = Arc::clone(&graph_arc);
+        app.on_graph_adjust_node_radius_requested(move |id, delta| {
+            if let Ok(mut gc) = graph_arc.lock() {
+                gc.adjust_node_radius(id.as_str(), delta);
+                if let Some(w) = app_weak.upgrade() {
+                    let nodes = to_slint_graph_nodes(&gc.get_visual_nodes(400.0, 300.0));
+                    w.set_graph_nodes(ModelRc::new(VecModel::from(nodes)));
+                }
+            }
+        });
+    }
+
+    // Callback: Salvar Grafo em arquivo `.grafo` no Grimório
+    {
+        let app_weak = app_weak.clone();
+        let graph_arc = Arc::clone(&graph_arc);
+        let state_arc = Arc::clone(&state_arc);
+        app.on_graph_save_grafo_requested(move || {
+            if let Ok(gc) = graph_arc.lock() {
+                if let Ok(st) = state_arc.lock() {
+                    let path = std::path::PathBuf::from(&st.vault_path).join("universo.grafo");
+                    let _ = gc.save_to_grafo_file(&path);
+                }
+                if let Some(w) = app_weak.upgrade() {
+                    w.set_sync_status("Grafo salvo em universo.grafo".into());
                 }
             }
         });
