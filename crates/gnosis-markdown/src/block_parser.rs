@@ -193,7 +193,7 @@ pub fn parse_spanned_blocks(body: &str) -> Vec<SpannedBlock> {
         }
 
         // 5. Cabeçalhos (# H1 até ###### H6)
-        if trimmed.starts_with('#') {
+        if is_valid_heading_line(trimmed) {
             let mut level = 0;
             for c in trimmed.chars() {
                 if c == '#' {
@@ -203,34 +203,29 @@ pub fn parse_spanned_blocks(body: &str) -> Vec<SpannedBlock> {
                 }
             }
 
-            if level >= 1 && level <= 6 {
-                let rest = trimmed[level..].trim();
-                // O caractere seguinte deve ser espaço para ser um cabeçalho Markdown válido
-                if trimmed.chars().nth(level) == Some(' ') || rest.is_empty() {
-                    let (header_text, anchor) = match rest.rsplit_once(" ^") {
-                        Some((title, anc)) => (title.trim(), Some(anc.trim().to_string())),
-                        None => (rest, None),
-                    };
+            let rest = trimmed[level..].trim();
+            let (header_text, anchor) = match rest.rsplit_once(" ^") {
+                Some((title, anc)) => (title.trim(), Some(anc.trim().to_string())),
+                None => (rest, None),
+            };
 
-                    let start_line = i;
-                    let span_start = line_infos[start_line].char_start;
-                    let span_end = line_infos[start_line].char_end;
-                    let raw_text = line_infos[start_line].text.to_string();
-                    i += 1;
+            let start_line = i;
+            let span_start = line_infos[start_line].char_start;
+            let span_end = line_infos[start_line].char_end;
+            let raw_text = line_infos[start_line].text.to_string();
+            i += 1;
 
-                    blocks.push(SpannedBlock {
-                        block: MarkdownBlock::Heading {
-                            level: level as u8,
-                            text: header_text.to_string(),
-                            anchor,
-                        },
-                        span_start,
-                        span_end,
-                        raw_text,
-                    });
-                    continue;
-                }
-            }
+            blocks.push(SpannedBlock {
+                block: MarkdownBlock::Heading {
+                    level: level as u8,
+                    text: header_text.to_string(),
+                    anchor,
+                },
+                span_start,
+                span_end,
+                raw_text,
+            });
+            continue;
         }
 
         // 6. Citações e Callouts (`> ...`)
@@ -416,7 +411,7 @@ pub fn parse_spanned_blocks(body: &str) -> Vec<SpannedBlock> {
             let p_trimmed = p_line.trim();
 
             if p_trimmed.is_empty()
-                || p_trimmed.starts_with('#')
+                || is_valid_heading_line(p_trimmed)
                 || p_trimmed.starts_with('>')
                 || p_trimmed.starts_with("```")
                 || p_trimmed.starts_with("$$")
@@ -454,10 +449,54 @@ pub fn parse_spanned_blocks(body: &str) -> Vec<SpannedBlock> {
                 span_end,
                 raw_text,
             });
+        } else if i == start_line && i < total_lines {
+            // Invariante de Segurança: Garante que nenhuma iteração do parser falhe em avançar i
+            let p_line = line_infos[i].text.trim();
+            let span_start = line_infos[i].char_start;
+            let span_end = line_infos[i].char_end;
+            let raw_text = line_infos[i].text.to_string();
+            let links = scan_wikilinks(p_line);
+            let tags = scan_tags(p_line);
+
+            blocks.push(SpannedBlock {
+                block: MarkdownBlock::Paragraph {
+                    text: p_line.to_string(),
+                    links,
+                    tags,
+                },
+                span_start,
+                span_end,
+                raw_text,
+            });
+            i += 1;
         }
     }
 
     blocks
+}
+
+/// Verifica se uma linha é um cabeçalho Markdown estritamente válido (# H1 até ###### H6 com espaço).
+fn is_valid_heading_line(s: &str) -> bool {
+    let trimmed = s.trim();
+    if !trimmed.starts_with('#') {
+        return false;
+    }
+
+    let mut level = 0;
+    for c in trimmed.chars() {
+        if c == '#' {
+            level += 1;
+        } else {
+            break;
+        }
+    }
+
+    if level >= 1 && level <= 6 {
+        let rest = trimmed[level..].trim();
+        trimmed.chars().nth(level) == Some(' ') || rest.is_empty()
+    } else {
+        false
+    }
 }
 
 fn is_task_line(s: &str) -> bool {
@@ -618,5 +657,46 @@ $$
         // Bloco 3: MathBlock
         assert!(spanned[3].raw_text.contains("$$"));
         assert!(spanned[3].raw_text.contains("x^2"));
+    }
+
+    #[test]
+    fn test_heading_with_more_than_6_hashes_never_loops_infinitely() {
+        let input = "####### Testes\n\n######## Mais de 6\n\n#tag_sem_espaco\n\n# Heading Válido";
+        let start = std::time::Instant::now();
+        let spanned = parse_spanned_blocks(input);
+        let elapsed = start.elapsed();
+
+        // Deve executar em menos de 10ms (sem loop infinito)
+        assert!(elapsed.as_millis() < 50, "Parser demorou {:?} (possível loop infinito)", elapsed);
+        assert_eq!(spanned.len(), 4);
+
+        // Primeiro bloco deve ser Parágrafo comum
+        if let MarkdownBlock::Paragraph { text, .. } = &spanned[0].block {
+            assert_eq!(text, "####### Testes");
+        } else {
+            panic!("Esperava Paragraph para 7 hashtags");
+        }
+
+        // Segundo bloco deve ser Parágrafo comum
+        if let MarkdownBlock::Paragraph { text, .. } = &spanned[1].block {
+            assert_eq!(text, "######## Mais de 6");
+        } else {
+            panic!("Esperava Paragraph para 8 hashtags");
+        }
+
+        // Terceiro bloco deve ser Parágrafo comum com a tag
+        if let MarkdownBlock::Paragraph { text, .. } = &spanned[2].block {
+            assert_eq!(text, "#tag_sem_espaco");
+        } else {
+            panic!("Esperava Paragraph para tag no início da linha");
+        }
+
+        // Quarto bloco deve ser Heading 1 válido
+        if let MarkdownBlock::Heading { level, text, .. } = &spanned[3].block {
+            assert_eq!(*level, 1);
+            assert_eq!(text, "Heading Válido");
+        } else {
+            panic!("Esperava Heading para `# Heading Válido`");
+        }
     }
 }

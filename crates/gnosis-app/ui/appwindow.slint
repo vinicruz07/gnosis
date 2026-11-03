@@ -60,7 +60,7 @@ export component AppWindow inherits Window {
     in property <[CanvasNodeSlint]> canvas_nodes: [];
     in property <[CanvasEdgeSlint]> canvas_edges: [];
     in property <float> canvas_zoom_level: 1.0;
-    in property <string> canvas_selected_node_id: "";
+    in-out property <string> canvas_selected_node_id: "";
     in property <int> canvas_node_count: 0;
     in property <int> canvas_edge_count: 0;
 
@@ -182,6 +182,7 @@ export component AppWindow inherits Window {
     callback canvas_add_text_requested();
     callback canvas_add_note_requested();
     callback canvas_delete_selected_requested();
+    callback canvas_connect_cards_requested(string, string);
 
     // Callbacks de Abas, Split e Histórico
     callback tab_selected(int);
@@ -556,7 +557,7 @@ export component AppWindow inherits Window {
                     nodes: root.canvas_nodes;
                     edges: root.canvas_edges;
                     zoom_level: root.canvas_zoom_level;
-                    selected_node_id: root.canvas_selected_node_id;
+                    selected_node_id <=> root.canvas_selected_node_id;
                     node_count: root.canvas_node_count;
                     edge_count: root.canvas_edge_count;
 
@@ -575,6 +576,7 @@ export component AppWindow inherits Window {
                     add_text_requested => { root.canvas_add_text_requested(); }
                     add_note_requested => { root.canvas_add_note_requested(); }
                     delete_selected_requested => { root.canvas_delete_selected_requested(); }
+                    connect_cards_requested(from, to) => { root.canvas_connect_cards_requested(from, to); }
                 }
 
                 if (!root.is_graph_view && !root.is_canvas_view): HorizontalLayout {

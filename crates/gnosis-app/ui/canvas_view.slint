@@ -32,7 +32,8 @@ export component CanvasView inherits Rectangle {
     in property <[CanvasNodeSlint]> nodes: [];
     in property <[CanvasEdgeSlint]> edges: [];
     in property <float> zoom_level: 1.0;
-    in property <string> selected_node_id: "";
+    in-out property <string> selected_node_id: "";
+    in-out property <string> connecting_source_id: "";
     in property <int> node_count: 0;
     in property <int> edge_count: 0;
 
@@ -52,6 +53,7 @@ export component CanvasView inherits Rectangle {
     callback add_text_requested();
     callback add_note_requested();
     callback delete_selected_requested();
+    callback connect_cards_requested(string, string);
 
     background: Theme.background;
     clip: true;
@@ -153,8 +155,14 @@ export component CanvasView inherits Rectangle {
         }
     }
 
-    // 3. Camada de Arestas / Conexões Direcionais
+    // 3. Camada de Arestas / Conexões Direcionais com viewbox 1:1
     for edge in root.edges: Path {
+        width: 100%;
+        height: 100%;
+        viewbox-x: 0;
+        viewbox-y: 0;
+        viewbox-width: root.width / 1px;
+        viewbox-height: root.height / 1px;
         stroke: (edge.color_hex != "") ? #89b4fa : #6c7086;
         stroke-width: 2px;
 
@@ -364,13 +372,13 @@ export component CanvasView inherits Rectangle {
 
             // Área de toque para seleção e arraste do cartão (ativo apenas quando não em edição)
             if (!node.is_editing): card_touch := TouchArea {
-                property <length> last_node_x;
-                property <length> last_node_y;
+                property <length> last_abs_x;
+                property <length> last_abs_y;
 
                 pointer-event(event) => {
                     if (event.kind == PointerEventKind.down) {
-                        last_node_x = self.mouse-x;
-                        last_node_y = self.mouse-y;
+                        last_abs_x = node.screen_x * 1px + self.mouse-x;
+                        last_abs_y = node.screen_y * 1px + self.mouse-y;
                     }
                     if (event.kind == PointerEventKind.up || event.kind == PointerEventKind.cancel) {
                         root.node_released(node.id);
@@ -378,13 +386,27 @@ export component CanvasView inherits Rectangle {
                 }
 
                 clicked => {
-                    root.node_clicked(node.id);
+                    if (root.connecting_source_id != "") {
+                        if (root.connecting_source_id != node.id) {
+                            root.connect_cards_requested(root.connecting_source_id, node.id);
+                        }
+                        root.connecting_source_id = "";
+                    } else {
+                        root.node_clicked(node.id);
+                    }
                 }
 
                 moved => {
-                    root.node_dragged(node.id, (self.mouse-x - last_node_x) / 1px, (self.mouse-y - last_node_y) / 1px);
-                    last_node_x = self.mouse-x;
-                    last_node_y = self.mouse-y;
+                    let current_abs_x = node.screen_x * 1px + self.mouse-x;
+                    let current_abs_y = node.screen_y * 1px + self.mouse-y;
+                    let dx = (current_abs_x - last_abs_x) / 1px;
+                    let dy = (current_abs_y - last_abs_y) / 1px;
+
+                    if (Math.abs(dx) > 0.05 || Math.abs(dy) > 0.05) {
+                        root.node_dragged(node.id, dx, dy);
+                        last_abs_x = current_abs_x;
+                        last_abs_y = current_abs_y;
+                    }
                 }
             }
         }
@@ -604,6 +626,133 @@ export component CanvasView inherits Rectangle {
 
                 touch_del := TouchArea {
                     clicked => { root.delete_selected_requested(); }
+                }
+            }
+        }
+    }
+
+    // 7. Barra Flutuante Inferior para Ações do Cartão Selecionado (Ligar, Excluir, etc.)
+    if (root.selected_node_id != ""): Rectangle {
+        x: (parent.width - self.width) / 2;
+        y: parent.height - self.height - 20px;
+        height: 42px;
+        background: Theme.sidebar_bg;
+        border-radius: 8px;
+        border-width: 1px;
+        border-color: Theme.border;
+
+        HorizontalLayout {
+            padding-left: 12px;
+            padding-right: 12px;
+            spacing: 10px;
+            alignment: center;
+
+            // Identificação do Cartão Selecionado
+            Text {
+                text: "🏷️ " + root.selected_node_id;
+                color: Theme.text_primary;
+                font-size: 11px;
+                font-weight: 600;
+                vertical-alignment: center;
+                max-width: 150px;
+                overflow: elide;
+            }
+
+            Rectangle {
+                width: 1px;
+                height: 20px;
+                background: Theme.border;
+                y: (parent.height - self.height) / 2;
+            }
+
+            // Botão Conectar (🔗 Ligar)
+            Rectangle {
+                height: 26px;
+                border-radius: 4px;
+                background: (root.connecting_source_id == root.selected_node_id) ? Theme.accent : (touch_conn_card.has-hover ? Theme.surface_hover : Theme.surface);
+                border-width: 1px;
+                border-color: Theme.border;
+
+                HorizontalLayout {
+                    padding-left: 8px;
+                    padding-right: 8px;
+                    spacing: 4px;
+                    alignment: center;
+
+                    Text {
+                        text: (root.connecting_source_id == root.selected_node_id) ? "👉 Clique no cartão de destino" : "🔗 Ligar Cartão";
+                        color: (root.connecting_source_id == root.selected_node_id) ? #11111b : Theme.text_primary;
+                        font-size: 11px;
+                        font-weight: 600;
+                        vertical-alignment: center;
+                    }
+                }
+
+                touch_conn_card := TouchArea {
+                    clicked => {
+                        if (root.connecting_source_id == root.selected_node_id) {
+                            root.connecting_source_id = "";
+                        } else {
+                            root.connecting_source_id = root.selected_node_id;
+                        }
+                    }
+                }
+            }
+
+            Rectangle {
+                width: 1px;
+                height: 20px;
+                background: Theme.border;
+                y: (parent.height - self.height) / 2;
+            }
+
+            // Botão Excluir
+            Rectangle {
+                height: 26px;
+                border-radius: 4px;
+                background: touch_del_card.has-hover ? #f38ba8 : Theme.surface;
+                border-width: 1px;
+                border-color: Theme.border;
+
+                HorizontalLayout {
+                    padding-left: 8px;
+                    padding-right: 8px;
+                    alignment: center;
+
+                    Text {
+                        text: "🗑️ Excluir";
+                        color: touch_del_card.has-hover ? #11111b : #f38ba8;
+                        font-size: 11px;
+                        font-weight: 600;
+                        vertical-alignment: center;
+                    }
+                }
+
+                touch_del_card := TouchArea {
+                    clicked => { root.delete_selected_requested(); }
+                }
+            }
+
+            // Botão Fechar Seleção (❌)
+            Rectangle {
+                width: 20px;
+                height: 20px;
+                border-radius: 10px;
+                background: touch_close_card.has-hover ? Theme.surface_hover : transparent;
+
+                Text {
+                    text: "✕";
+                    color: Theme.text_muted;
+                    font-size: 10px;
+                    vertical-alignment: center;
+                    horizontal-alignment: center;
+                }
+
+                touch_close_card := TouchArea {
+                    clicked => {
+                        root.connecting_source_id = "";
+                        root.selected_node_id = "";
+                    }
                 }
             }
         }

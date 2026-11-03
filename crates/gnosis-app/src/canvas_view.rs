@@ -60,6 +60,8 @@ pub struct CanvasViewController {
     pub editing_node_id: Option<String>,
     pub active_file_path: Option<PathBuf>,
     pub is_modified: bool,
+    pub drag_subpixel_x: f32,
+    pub drag_subpixel_y: f32,
 }
 
 impl CanvasViewController {
@@ -74,6 +76,8 @@ impl CanvasViewController {
             editing_node_id: None,
             active_file_path: None,
             is_modified: false,
+            drag_subpixel_x: 0.0,
+            drag_subpixel_y: 0.0,
         }
     }
 
@@ -279,15 +283,54 @@ impl CanvasViewController {
     /// Move um nó com base no deslocamento de tela (delta em pixels de tela convertido para escala do mundo).
     pub fn move_node(&mut self, id: &str, delta_screen_x: f32, delta_screen_y: f32) {
         let zoom = if self.zoom > 0.01 { self.zoom } else { 1.0 };
-        let world_dx = (delta_screen_x / zoom) as i32;
-        let world_dy = (delta_screen_y / zoom) as i32;
+        self.drag_subpixel_x += delta_screen_x / zoom;
+        self.drag_subpixel_y += delta_screen_y / zoom;
 
-        if let Some(node) = self.canvas_data.get_node_mut(id) {
-            let current_x = node.x();
-            let current_y = node.y();
-            node.set_position(current_x + world_dx, current_y + world_dy);
-            self.is_modified = true;
+        let step_x = self.drag_subpixel_x.trunc() as i32;
+        let step_y = self.drag_subpixel_y.trunc() as i32;
+
+        if step_x != 0 || step_y != 0 {
+            if let Some(node) = self.canvas_data.get_node_mut(id) {
+                let current_x = node.x();
+                let current_y = node.y();
+                node.set_position(current_x + step_x, current_y + step_y);
+                self.drag_subpixel_x -= step_x as f32;
+                self.drag_subpixel_y -= step_y as f32;
+                self.is_modified = true;
+            }
         }
+    }
+
+    /// Cria uma conexão direcionada entre dois cartões na Membrana.
+    pub fn connect_cards(&mut self, from_id: &str, to_id: &str) -> String {
+        if from_id.is_empty() || to_id.is_empty() || from_id == to_id {
+            return String::new();
+        }
+
+        // Se já existe uma conexão entre esses dois nós, retorna o ID existente sem duplicar
+        if let Some(existing) = self.canvas_data.edges.iter().find(|e| {
+            (e.from_node == from_id && e.to_node == to_id)
+                || (e.from_node == to_id && e.to_node == from_id)
+        }) {
+            return existing.id.clone();
+        }
+
+        let edge_id = format!("edge_{}_{}", from_id, to_id);
+        let edge = CanvasEdge {
+            id: edge_id.clone(),
+            from_node: from_id.to_string(),
+            from_side: Some(NodeSide::Right),
+            from_end: Some(EdgeEnd::None),
+            to_node: to_id.to_string(),
+            to_side: Some(NodeSide::Left),
+            to_end: Some(EdgeEnd::Arrow),
+            color: Some("#89b4fa".to_string()),
+            label: None,
+            extra: HashMap::new(),
+        };
+        self.canvas_data.add_edge(edge);
+        self.is_modified = true;
+        edge_id
     }
 
     /// Adiciona um novo cartão de texto no centro da visão atual.
@@ -863,5 +906,53 @@ mod tests {
         assert_eq!(ctrl.editing_node_id, None);
 
         let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_membrane_interactive_connect_cards_and_subpixel_drag() {
+        let mut ctrl = CanvasViewController::new(CanvasData::new());
+        let id_a = ctrl.add_text_card_at("Cartão A", 100.0, 100.0);
+        let id_b = ctrl.add_text_card_at("Cartão B", 400.0, 100.0);
+
+        // Subpixel drag: pequenos deltas fracionários que acumulam
+        let initial_node_a = ctrl.canvas_data.get_node(&id_a).expect("Node A").clone();
+        let init_x = initial_node_a.x();
+        let init_y = initial_node_a.y();
+
+        // 3 movimentos de 0.4px = 1.2px (deve mover pelo menos 1px sem perder precisão)
+        ctrl.move_node(&id_a, 0.4, 0.4);
+        ctrl.move_node(&id_a, 0.4, 0.4);
+        ctrl.move_node(&id_a, 0.4, 0.4);
+
+        let moved_node_a = ctrl.canvas_data.get_node(&id_a).expect("Node A");
+        assert_eq!(moved_node_a.x(), init_x + 1);
+        assert_eq!(moved_node_a.y(), init_y + 1);
+
+        // Conectar cartões A e B
+        assert_eq!(ctrl.canvas_data.edges.len(), 0);
+        let edge_id = ctrl.connect_cards(&id_a, &id_b);
+        assert!(!edge_id.is_empty());
+        assert_eq!(ctrl.canvas_data.edges.len(), 1);
+
+        let edge = &ctrl.canvas_data.edges[0];
+        assert_eq!(edge.from_node, id_a);
+        assert_eq!(edge.to_node, id_b);
+        assert_eq!(edge.from_side, Some(NodeSide::Right));
+        assert_eq!(edge.to_side, Some(NodeSide::Left));
+
+        // Conectar para a mesma aresta não deve duplicar
+        let dup_id = ctrl.connect_cards(&id_a, &id_b);
+        assert_eq!(dup_id, edge_id);
+        assert_eq!(ctrl.canvas_data.edges.len(), 1);
+
+        // Conectar para si mesmo não deve criar aresta circular
+        let self_id = ctrl.connect_cards(&id_a, &id_a);
+        assert!(self_id.is_empty());
+        assert_eq!(ctrl.canvas_data.edges.len(), 1);
+
+        // Projeção visual deve conter a aresta entre A e B
+        let (_, visual_edges) = ctrl.to_visual_models();
+        assert_eq!(visual_edges.len(), 1);
+        assert_eq!(visual_edges[0].id, edge_id);
     }
 }

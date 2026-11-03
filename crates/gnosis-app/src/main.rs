@@ -1114,6 +1114,25 @@ fn main() {
         });
     }
 
+    // Callback: Conectar dois cartões na Membrana
+    {
+        let app_weak = app_weak.clone();
+        let canvas_arc = Arc::clone(&canvas_arc);
+        app.on_canvas_connect_cards_requested(move |from_id, to_id| {
+            if let Ok(mut cc) = canvas_arc.lock() {
+                cc.connect_cards(from_id.as_str(), to_id.as_str());
+                let _ = cc.save_to_disk();
+                if let Some(w) = app_weak.upgrade() {
+                    let (nodes, edges) = cc.to_visual_models();
+                    w.set_canvas_nodes(ModelRc::new(VecModel::from(to_slint_canvas_nodes(&nodes))));
+                    w.set_canvas_edges(ModelRc::new(VecModel::from(to_slint_canvas_edges(&edges))));
+                    w.set_canvas_node_count(cc.canvas_data.node_count() as i32);
+                    w.set_canvas_edge_count(cc.canvas_data.edge_count() as i32);
+                }
+            }
+        });
+    }
+
     // Callback: Alternar modo de Edição / Leitura (Ctrl+E)
     {
         let app_weak = app_weak.clone();
