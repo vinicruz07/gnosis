@@ -15,6 +15,7 @@ use std::path::PathBuf;
 pub enum AppMode {
     Desktop,
     Portable,
+    Mobile,
 }
 
 /// Diretórios de armazenamento resolvidos para a aplicação.
@@ -31,7 +32,19 @@ impl StoragePaths {
     ///
     /// Se `force_portable` for verdadeiro ou se existir o arquivo marcador `gnosis.portable`
     /// na mesma pasta do executável, opera em modo Portable isolado.
+    /// Em ambiente móvel (Android Scoped Storage), isola os dados na pasta do app.
     pub fn resolve(force_portable: bool) -> Result<Self> {
+        // Se variável de ambiente indicar diretório Android ou modo mobile explícito:
+        if let Some(android_files) = std::env::var_os("GNOSIS_ANDROID_FILES_DIR") {
+            return Ok(Self::resolve_mobile(PathBuf::from(android_files)));
+        }
+
+        #[cfg(target_os = "android")]
+        {
+            let default_android_dir = PathBuf::from("/data/data/org.gnosis.app/files");
+            return Ok(Self::resolve_mobile(default_android_dir));
+        }
+
         let exe_path = match std::env::current_exe() {
             Ok(p) => p,
             Err(_) => return Err(NativeFsError::ExecutablePathError),
@@ -78,6 +91,26 @@ impl StoragePaths {
         self.mode == AppMode::Portable
     }
 
+    /// Retorna se a aplicação está operando em modo Mobile (Android Scoped Storage).
+    pub fn is_mobile(&self) -> bool {
+        self.mode == AppMode::Mobile
+    }
+
+    /// Resolve os caminhos de armazenamento para a versão Mobile (Android Scoped Storage).
+    ///
+    /// No Android, todos os arquivos, Grimórios e caches são mantidos estritamente dentro do
+    /// diretório de armazenamento privado do aplicativo (ex: `/data/user/0/org.gnosis.app/files`),
+    /// garantindo isolamento total sem dependência de permissões perigosas do sistema.
+    pub fn resolve_mobile(app_internal_dir: impl Into<PathBuf>) -> Self {
+        let base = app_internal_dir.into();
+        Self {
+            mode: AppMode::Mobile,
+            config_dir: base.join("config"),
+            data_dir: base.join("data"),
+            cache_dir: base.join("cache"),
+        }
+    }
+
     /// Cria as pastas de dados, configuração e cache caso não existam.
     pub fn ensure_dirs_exist(&self) -> Result<()> {
         if !self.config_dir.exists() {
@@ -106,5 +139,16 @@ mod tests {
         assert!(paths.config_dir.ends_with("config"));
         assert!(paths.cache_dir.ends_with("cache"));
         Ok(())
+    }
+
+    #[test]
+    fn test_mobile_paths_resolution() {
+        let dummy_android_dir = PathBuf::from("/data/user/0/org.gnosis.app/files");
+        let paths = StoragePaths::resolve_mobile(&dummy_android_dir);
+        assert!(paths.is_mobile());
+        assert_eq!(paths.mode, AppMode::Mobile);
+        assert_eq!(paths.data_dir, dummy_android_dir.join("data"));
+        assert_eq!(paths.config_dir, dummy_android_dir.join("config"));
+        assert_eq!(paths.cache_dir, dummy_android_dir.join("cache"));
     }
 }

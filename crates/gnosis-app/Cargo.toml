@@ -5,6 +5,17 @@ edition.workspace = true
 license.workspace = true
 authors.workspace = true
 
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[package.metadata.android]
+package = "org.gnosis.app"
+apk_name = "Gnosis"
+build_targets = ["aarch64-linux-android", "armv7-linux-androideabi", "x86_64-linux-android"]
+min_sdk_version = 26
+target_sdk_version = 34
+manifest = "android/AndroidManifest.xml"
+
 [lints.rust]
 unsafe_code = "deny"
 
