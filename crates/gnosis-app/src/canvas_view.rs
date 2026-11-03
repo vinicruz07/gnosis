@@ -62,6 +62,7 @@ pub struct CanvasViewController {
     pub is_modified: bool,
     pub drag_subpixel_x: f32,
     pub drag_subpixel_y: f32,
+    pub dragging_node_id: Option<String>,
 }
 
 impl CanvasViewController {
@@ -78,6 +79,7 @@ impl CanvasViewController {
             is_modified: false,
             drag_subpixel_x: 0.0,
             drag_subpixel_y: 0.0,
+            dragging_node_id: None,
         }
     }
 
@@ -299,6 +301,60 @@ impl CanvasViewController {
                 self.is_modified = true;
             }
         }
+    }
+
+    /// Localiza o nó ou grupo visual sob as coordenadas de tela do mouse.
+    pub fn find_node_at(&self, mouse_x: f32, mouse_y: f32) -> Option<String> {
+        let (visual_nodes, _) = self.to_visual_models();
+        // 1. Verifica primeiro os cartões de conteúdo (renderizados na frente)
+        for node in visual_nodes.iter().rev() {
+            if node.node_type != "group" {
+                if mouse_x >= node.screen_x
+                    && mouse_x <= node.screen_x + node.screen_width
+                    && mouse_y >= node.screen_y
+                    && mouse_y <= node.screen_y + node.screen_height
+                {
+                    return Some(node.id.clone());
+                }
+            }
+        }
+        // 2. Se nenhum cartão foi clicado, verifica os grupos (renderizados atrás)
+        for node in visual_nodes.iter().rev() {
+            if node.node_type == "group" {
+                if mouse_x >= node.screen_x
+                    && mouse_x <= node.screen_x + node.screen_width
+                    && mouse_y >= node.screen_y
+                    && mouse_y <= node.screen_y + node.screen_height
+                {
+                    return Some(node.id.clone());
+                }
+            }
+        }
+        None
+    }
+
+    /// Processa mouse down na Membrana: se atingir um cartão, prepara para arrastá-lo; senão, para pan.
+    pub fn handle_pointer_down(&mut self, mouse_x: f32, mouse_y: f32) -> Option<String> {
+        let node_id = self.find_node_at(mouse_x, mouse_y);
+        self.dragging_node_id = node_id.clone();
+        node_id
+    }
+
+    /// Processa o arraste na Membrana: move o cartão se houver um ativo, ou pan da câmera.
+    /// Retorna `true` se um cartão foi movido, ou `false` se a câmera foi panned.
+    pub fn handle_pointer_move(&mut self, dx: f32, dy: f32) -> bool {
+        if let Some(id) = self.dragging_node_id.clone() {
+            self.move_node(&id, dx, dy);
+            true
+        } else {
+            self.pan(dx, dy);
+            false
+        }
+    }
+
+    /// Processa o término do arraste na Membrana, liberando o nó ativo.
+    pub fn handle_pointer_up(&mut self) -> Option<String> {
+        self.dragging_node_id.take()
     }
 
     /// Cria uma conexão direcionada entre dois cartões na Membrana.
@@ -954,5 +1010,55 @@ mod tests {
         let (_, visual_edges) = ctrl.to_visual_models();
         assert_eq!(visual_edges.len(), 1);
         assert_eq!(visual_edges[0].id, edge_id);
+    }
+
+    #[test]
+    fn test_canvas_view_hit_testing_and_unified_drag() {
+        let mut ctrl = CanvasViewController::new(CanvasData::new());
+        ctrl.camera_x = 0.0;
+        ctrl.camera_y = 0.0;
+        ctrl.zoom = 1.0;
+
+        let card_id = ctrl.add_text_card_at("Cartão Teste", 100.0, 100.0);
+
+        // 1. Hit-testing: clique no centro do cartão (100 + 50, 100 + 30)
+        let hit = ctrl.find_node_at(150.0, 130.0);
+        assert_eq!(hit, Some(card_id.clone()));
+
+        // 2. Hit-testing: clique fora do cartão
+        let miss = ctrl.find_node_at(10.0, 10.0);
+        assert_eq!(miss, None);
+
+        // 3. Pointer Down no cartão
+        let down_target = ctrl.handle_pointer_down(150.0, 130.0);
+        assert_eq!(down_target, Some(card_id.clone()));
+        assert_eq!(ctrl.dragging_node_id, Some(card_id.clone()));
+
+        // 4. Pointer Move deve mover o cartão (retornando true)
+        let initial_node = ctrl.canvas_data.get_node(&card_id).unwrap().clone();
+        let init_x = initial_node.x();
+        let init_y = initial_node.y();
+
+        let moved = ctrl.handle_pointer_move(20.0, 15.0);
+        assert!(moved);
+
+        let moved_node = ctrl.canvas_data.get_node(&card_id).unwrap();
+        assert_eq!(moved_node.x(), init_x + 20);
+        assert_eq!(moved_node.y(), init_y + 15);
+
+        // 5. Pointer Up deve liberar o nó
+        let released = ctrl.handle_pointer_up();
+        assert_eq!(released, Some(card_id));
+        assert_eq!(ctrl.dragging_node_id, None);
+
+        // 6. Pointer Down no vazio deve realizar pan
+        let pan_target = ctrl.handle_pointer_down(5.0, 5.0);
+        assert_eq!(pan_target, None);
+        assert_eq!(ctrl.dragging_node_id, None);
+
+        let initial_cam_x = ctrl.camera_x;
+        let panned = ctrl.handle_pointer_move(30.0, 40.0);
+        assert!(!panned);
+        assert_eq!(ctrl.camera_x, initial_cam_x + 30.0);
     }
 }

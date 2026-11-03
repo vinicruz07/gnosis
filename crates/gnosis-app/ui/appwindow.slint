@@ -54,6 +54,7 @@ export component AppWindow inherits Window {
     in property <bool> graph_hide_orphans: false;
     in property <bool> graph_hide_unresolved: false;
     in-out property <string> graph_selected_node_id: "";
+    in-out property <string> graph_connecting_source_id: "";
 
     // Propriedades do Canvas 2D Infinito (.canvas)
     in property <bool> is_canvas_view: false;
@@ -61,6 +62,7 @@ export component AppWindow inherits Window {
     in property <[CanvasEdgeSlint]> canvas_edges: [];
     in property <float> canvas_zoom_level: 1.0;
     in-out property <string> canvas_selected_node_id: "";
+    in-out property <string> canvas_connecting_source_id: "";
     in property <int> canvas_node_count: 0;
     in property <int> canvas_edge_count: 0;
 
@@ -157,6 +159,10 @@ export component AppWindow inherits Window {
     callback graph_zoom_out();
     callback graph_zoom_reset();
     callback graph_panned(float, float);
+    callback graph_canvas_pointer_down(float, float);
+    callback graph_canvas_pointer_moved(float, float);
+    callback graph_canvas_pointer_up();
+    callback graph_canvas_clicked(float, float);
     callback graph_unpin_node_requested(string);
     callback graph_add_node_requested();
     callback graph_delete_node_requested(string);
@@ -175,6 +181,10 @@ export component AppWindow inherits Window {
     callback canvas_node_edit_applied(string, string);
     callback canvas_node_edit_cancelled(string);
     callback canvas_panned(float, float);
+    callback canvas_pointer_down(float, float);
+    callback canvas_pointer_moved(float, float);
+    callback canvas_pointer_up();
+    callback canvas_clicked(float, float);
     callback canvas_zoom_in();
     callback canvas_zoom_out();
     callback canvas_zoom_reset();
@@ -532,11 +542,16 @@ export component AppWindow inherits Window {
                     hide_orphans: root.graph_hide_orphans;
                     hide_unresolved: root.graph_hide_unresolved;
                     selected_node_id <=> root.graph_selected_node_id;
+                    connecting_source_id <=> root.graph_connecting_source_id;
 
                     node_clicked(id) => { root.graph_node_clicked(id); }
                     node_dragged(id, dx, dy) => { root.graph_node_dragged(id, dx, dy); }
                     node_released(id) => { root.graph_node_released(id); }
                     canvas_panned(dx, dy) => { root.graph_panned(dx, dy); }
+                    canvas_pointer_down(x, y) => { root.graph_canvas_pointer_down(x, y); }
+                    canvas_pointer_moved(dx, dy) => { root.graph_canvas_pointer_moved(dx, dy); }
+                    canvas_pointer_up => { root.graph_canvas_pointer_up(); }
+                    canvas_clicked(x, y) => { root.graph_canvas_clicked(x, y); }
                     restart_physics => { root.graph_restart_physics(); }
                     toggle_hide_orphans => { root.graph_toggle_hide_orphans(); }
                     toggle_hide_unresolved => { root.graph_toggle_hide_unresolved(); }
@@ -558,6 +573,7 @@ export component AppWindow inherits Window {
                     edges: root.canvas_edges;
                     zoom_level: root.canvas_zoom_level;
                     selected_node_id <=> root.canvas_selected_node_id;
+                    connecting_source_id <=> root.canvas_connecting_source_id;
                     node_count: root.canvas_node_count;
                     edge_count: root.canvas_edge_count;
 
@@ -569,6 +585,10 @@ export component AppWindow inherits Window {
                     node_edit_applied(id, text) => { root.canvas_node_edit_applied(id, text); }
                     node_edit_cancelled(id) => { root.canvas_node_edit_cancelled(id); }
                     canvas_panned(dx, dy) => { root.canvas_panned(dx, dy); }
+                    canvas_pointer_down(x, y) => { root.canvas_pointer_down(x, y); }
+                    canvas_pointer_moved(dx, dy) => { root.canvas_pointer_moved(dx, dy); }
+                    canvas_pointer_up => { root.canvas_pointer_up(); }
+                    canvas_clicked(x, y) => { root.canvas_clicked(x, y); }
                     zoom_in => { root.canvas_zoom_in(); }
                     zoom_out => { root.canvas_zoom_out(); }
                     zoom_reset => { root.canvas_zoom_reset(); }

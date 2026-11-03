@@ -81,6 +81,7 @@ pub struct GraphViewController {
     pub pan_x: f32,
     pub pan_y: f32,
     pub zoom: f32,
+    pub dragging_node_id: Option<String>,
 }
 
 impl GraphViewController {
@@ -114,7 +115,50 @@ impl GraphViewController {
             pan_x: 0.0,
             pan_y: 0.0,
             zoom: 1.0,
+            dragging_node_id: None,
         }
+    }
+
+    /// Localiza o nó visual sob as coordenadas do mouse (com raio de tolerância confortável para clique/toque).
+    pub fn find_node_at(&self, mouse_x: f32, mouse_y: f32, screen_w: f32, screen_h: f32) -> Option<String> {
+        let visual_nodes = self.get_visual_nodes(screen_w, screen_h);
+        for node in visual_nodes.iter().rev() {
+            let dx = mouse_x - node.x;
+            let dy = mouse_y - node.y;
+            let hit_radius = (node.radius + 6.0).max(16.0);
+            if dx * dx + dy * dy <= hit_radius * hit_radius {
+                return Some(node.id.clone());
+            }
+        }
+        None
+    }
+
+    /// Processa o evento de mouse down no canvas: se atingir um nó, inicia o arrasto dele; caso contrário, prepara para pan.
+    pub fn handle_pointer_down(&mut self, mouse_x: f32, mouse_y: f32, screen_w: f32, screen_h: f32) -> Option<String> {
+        let node_id = self.find_node_at(mouse_x, mouse_y, screen_w, screen_h);
+        self.dragging_node_id = node_id.clone();
+        node_id
+    }
+
+    /// Processa o movimento de arrasto no canvas: se um nó estiver sendo arrastado, move o nó e fixa; se não, move a câmera (pan).
+    /// Retorna `true` se um nó foi movido (necessitando atualização de nós na UI), ou `false` se foi pan.
+    pub fn handle_pointer_move(&mut self, dx: f32, dy: f32) -> bool {
+        if let Some(id) = self.dragging_node_id.clone() {
+            self.drag_node(&id, dx, dy);
+            self.wake_up();
+            self.step();
+            true
+        } else {
+            self.pan(dx, dy);
+            false
+        }
+    }
+
+    /// Processa o término do clique/arrasto no canvas.
+    pub fn handle_pointer_up(&mut self) -> Option<String> {
+        let released = self.dragging_node_id.take();
+        self.wake_up();
+        released
     }
 
     /// Executa um passo da simulação de física 2D.
@@ -620,5 +664,49 @@ mod tests {
         let imported_a = visual.iter().find(|n| n.id == "A").unwrap();
         assert_eq!(imported_a.color_hex, "#a6e3a1");
         assert_eq!(imported_a.radius, 25.0);
+    }
+
+    #[test]
+    fn test_graph_view_hit_testing_and_unified_drag() {
+        let graph = build_test_graph();
+        let mut controller = GraphViewController::new(graph);
+
+        // Obter posição do nó "A"
+        let nodes = controller.get_visual_nodes(400.0, 300.0);
+        let node_a = nodes.iter().find(|n| n.id == "A").unwrap();
+        let ax = node_a.x;
+        let ay = node_a.y;
+
+        // 1. Hit-testing: clique exatamente no nó A deve detectá-lo
+        let hit = controller.find_node_at(ax, ay, 400.0, 300.0);
+        assert_eq!(hit, Some("A".to_string()));
+
+        // 2. Hit-testing: clique bem longe (ex: 10, 10) deve retornar None
+        let miss = controller.find_node_at(10.0, 10.0, 400.0, 300.0);
+        assert_eq!(miss, None);
+
+        // 3. Pointer Down no nó A
+        let down_target = controller.handle_pointer_down(ax, ay, 400.0, 300.0);
+        assert_eq!(down_target, Some("A".to_string()));
+        assert_eq!(controller.dragging_node_id, Some("A".to_string()));
+
+        // 4. Pointer Move deve mover o nó A (retornando true para step de física)
+        let moved = controller.handle_pointer_move(15.0, 20.0);
+        assert!(moved);
+
+        // 5. Pointer Up deve liberar o nó
+        let released = controller.handle_pointer_up();
+        assert_eq!(released, Some("A".to_string()));
+        assert_eq!(controller.dragging_node_id, None);
+
+        // 6. Pointer Down no vazio deve preparar pan (retornando None)
+        let pan_target = controller.handle_pointer_down(5.0, 5.0, 400.0, 300.0);
+        assert_eq!(pan_target, None);
+        assert_eq!(controller.dragging_node_id, None);
+
+        let initial_pan_x = controller.pan_x;
+        let panned = controller.handle_pointer_move(10.0, 5.0);
+        assert!(!panned); // false indica que foi pan de câmera
+        assert_eq!(controller.pan_x, initial_pan_x + 10.0);
     }
 }

@@ -527,6 +527,79 @@ fn main() {
         });
     }
 
+    // Callback: Pointer Down no canvas do Grafo (hit-test unificado sem perder mouse grab)
+    {
+        let graph_arc = Arc::clone(&graph_arc);
+        app.on_graph_canvas_pointer_down(move |x, y| {
+            if let Ok(mut gc) = graph_arc.lock() {
+                gc.handle_pointer_down(x, y, 400.0, 300.0);
+            }
+        });
+    }
+
+    // Callback: Pointer Moved no canvas do Grafo (arraste fluido de nó ou pan da câmera)
+    {
+        let app_weak = app_weak.clone();
+        let graph_arc = Arc::clone(&graph_arc);
+        app.on_graph_canvas_pointer_moved(move |dx, dy| {
+            if let Ok(mut gc) = graph_arc.lock() {
+                let moved_node = gc.handle_pointer_move(dx, dy);
+                if let Some(w) = app_weak.upgrade() {
+                    let nodes = to_slint_graph_nodes(&gc.get_visual_nodes(400.0, 300.0));
+                    let edges = to_slint_graph_edges(&gc.get_visual_edges(400.0, 300.0));
+                    w.set_graph_nodes(ModelRc::new(VecModel::from(nodes)));
+                    w.set_graph_edges(ModelRc::new(VecModel::from(edges)));
+                    if moved_node {
+                        w.set_graph_is_sleeping(gc.is_sleeping());
+                    }
+                }
+            }
+        });
+    }
+
+    // Callback: Pointer Up no canvas do Grafo
+    {
+        let graph_arc = Arc::clone(&graph_arc);
+        app.on_graph_canvas_pointer_up(move || {
+            if let Ok(mut gc) = graph_arc.lock() {
+                gc.handle_pointer_up();
+            }
+        });
+    }
+
+    // Callback: Click no canvas do Grafo (seleção, conexão e desmarcação)
+    {
+        let app_weak = app_weak.clone();
+        let graph_arc = Arc::clone(&graph_arc);
+        app.on_graph_canvas_clicked(move |x, y| {
+            if let Ok(mut gc) = graph_arc.lock() {
+                let clicked_node = gc.find_node_at(x, y, 400.0, 300.0);
+                if let Some(w) = app_weak.upgrade() {
+                    let connecting_source = w.get_graph_connecting_source_id();
+                    if let Some(ref node_id) = clicked_node {
+                        if !connecting_source.is_empty() {
+                            if connecting_source != node_id.as_str() {
+                                gc.connect_nodes(connecting_source.as_str(), node_id.as_str());
+                                gc.wake_up();
+                                gc.step();
+                                let nodes = to_slint_graph_nodes(&gc.get_visual_nodes(400.0, 300.0));
+                                let edges = to_slint_graph_edges(&gc.get_visual_edges(400.0, 300.0));
+                                w.set_graph_nodes(ModelRc::new(VecModel::from(nodes)));
+                                w.set_graph_edges(ModelRc::new(VecModel::from(edges)));
+                            }
+                            w.set_graph_connecting_source_id("".into());
+                        } else {
+                            w.set_graph_selected_node_id(node_id.as_str().into());
+                        }
+                    } else {
+                        w.set_graph_selected_node_id("".into());
+                        w.set_graph_connecting_source_id("".into());
+                    }
+                }
+            }
+        });
+    }
+
     // Callback: Pan (arrasto do fundo da tela do Grafo)
     {
         let app_weak = app_weak.clone();
@@ -864,6 +937,83 @@ fn main() {
         app.on_canvas_node_released(move |_node_id| {
             if let Ok(mut cc) = canvas_arc.lock() {
                 let _ = cc.save_to_disk();
+            }
+        });
+    }
+
+    // Callback: Pointer Down no Canvas da Membrana (hit-test unificado sem perda de mouse grab)
+    {
+        let canvas_arc = Arc::clone(&canvas_arc);
+        app.on_canvas_pointer_down(move |x, y| {
+            if let Ok(mut cc) = canvas_arc.lock() {
+                cc.handle_pointer_down(x, y);
+            }
+        });
+    }
+
+    // Callback: Pointer Moved no Canvas da Membrana (arraste fluido de cartão ou pan do canvas a 60 FPS)
+    {
+        let app_weak = app_weak.clone();
+        let canvas_arc = Arc::clone(&canvas_arc);
+        app.on_canvas_pointer_moved(move |dx, dy| {
+            if let Ok(mut cc) = canvas_arc.lock() {
+                let _moved = cc.handle_pointer_move(dx, dy);
+                if let Some(w) = app_weak.upgrade() {
+                    let (nodes, edges) = cc.to_visual_models();
+                    w.set_canvas_nodes(ModelRc::new(VecModel::from(to_slint_canvas_nodes(&nodes))));
+                    w.set_canvas_edges(ModelRc::new(VecModel::from(to_slint_canvas_edges(&edges))));
+                }
+            }
+        });
+    }
+
+    // Callback: Pointer Up no Canvas da Membrana (gravação atômica em disco ao soltar)
+    {
+        let canvas_arc = Arc::clone(&canvas_arc);
+        app.on_canvas_pointer_up(move || {
+            if let Ok(mut cc) = canvas_arc.lock() {
+                if let Some(_released_id) = cc.handle_pointer_up() {
+                    let _ = cc.save_to_disk();
+                }
+            }
+        });
+    }
+
+    // Callback: Click no Canvas da Membrana (seleção, conexão de cartões ou desmarcação)
+    {
+        let app_weak = app_weak.clone();
+        let canvas_arc = Arc::clone(&canvas_arc);
+        app.on_canvas_clicked(move |x, y| {
+            if let Ok(mut cc) = canvas_arc.lock() {
+                let clicked_card = cc.find_node_at(x, y);
+                if let Some(w) = app_weak.upgrade() {
+                    let connecting_source = w.get_canvas_connecting_source_id();
+                    if let Some(ref card_id) = clicked_card {
+                        if !connecting_source.is_empty() {
+                            if connecting_source != card_id.as_str() {
+                                cc.connect_cards(connecting_source.as_str(), card_id.as_str());
+                                let _ = cc.save_to_disk();
+                                let (nodes, edges) = cc.to_visual_models();
+                                w.set_canvas_nodes(ModelRc::new(VecModel::from(to_slint_canvas_nodes(&nodes))));
+                                w.set_canvas_edges(ModelRc::new(VecModel::from(to_slint_canvas_edges(&edges))));
+                            }
+                            w.set_canvas_connecting_source_id("".into());
+                        } else {
+                            cc.select_node(card_id);
+                            w.set_canvas_selected_node_id(card_id.as_str().into());
+                            let (nodes, edges) = cc.to_visual_models();
+                            w.set_canvas_nodes(ModelRc::new(VecModel::from(to_slint_canvas_nodes(&nodes))));
+                            w.set_canvas_edges(ModelRc::new(VecModel::from(to_slint_canvas_edges(&edges))));
+                        }
+                    } else {
+                        cc.select_node("");
+                        w.set_canvas_selected_node_id("".into());
+                        w.set_canvas_connecting_source_id("".into());
+                        let (nodes, edges) = cc.to_visual_models();
+                        w.set_canvas_nodes(ModelRc::new(VecModel::from(to_slint_canvas_nodes(&nodes))));
+                        w.set_canvas_edges(ModelRc::new(VecModel::from(to_slint_canvas_edges(&edges))));
+                    }
+                }
             }
         });
     }

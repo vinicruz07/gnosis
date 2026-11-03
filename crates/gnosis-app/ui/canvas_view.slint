@@ -46,6 +46,10 @@ export component CanvasView inherits Rectangle {
     callback node_edit_cancelled(string);
     callback canvas_panned(float, float);
     callback canvas_double_clicked(float, float);
+    callback canvas_pointer_down(float, float);
+    callback canvas_pointer_moved(float, float);
+    callback canvas_pointer_up();
+    callback canvas_clicked(float, float);
     callback zoom_in();
     callback zoom_out();
     callback zoom_reset();
@@ -58,25 +62,41 @@ export component CanvasView inherits Rectangle {
     background: Theme.background;
     clip: true;
 
-    // 1. Fundo infinito com grade de pontos e captura de Pan
+    // 1. Fundo infinito para captura unificada de Pan, Zoom e Arraste Contínuo de Cartões
     canvas_touch := TouchArea {
         width: 100%;
         height: 100%;
         property <length> last_x;
         property <length> last_y;
+        property <length> press_x;
+        property <length> press_y;
+        property <bool> moved_significantly: false;
 
         pointer-event(event) => {
             if (event.kind == PointerEventKind.down) {
                 last_x = self.mouse-x;
                 last_y = self.mouse-y;
+                press_x = self.mouse-x;
+                press_y = self.mouse-y;
+                moved_significantly = false;
+                root.canvas_pointer_down(self.mouse-x / 1px, self.mouse-y / 1px);
+            }
+            if (event.kind == PointerEventKind.up || event.kind == PointerEventKind.cancel) {
+                root.canvas_pointer_up();
             }
         }
 
         moved => {
-            // Arraste de pan fluido com deltas relativos ao frame anterior
-            root.canvas_panned((self.mouse-x - last_x) / 1px, (self.mouse-y - last_y) / 1px);
-            last_x = self.mouse-x;
-            last_y = self.mouse-y;
+            let dx = (self.mouse-x - last_x) / 1px;
+            let dy = (self.mouse-y - last_y) / 1px;
+            if (Math.abs(self.mouse-x - press_x) > 3px || Math.abs(self.mouse-y - press_y) > 3px) {
+                moved_significantly = true;
+            }
+            if (Math.abs(dx) > 0.05 || Math.abs(dy) > 0.05) {
+                root.canvas_pointer_moved(dx, dy);
+                last_x = self.mouse-x;
+                last_y = self.mouse-y;
+            }
         }
 
         scroll-event(event) => {
@@ -89,7 +109,9 @@ export component CanvasView inherits Rectangle {
         }
 
         clicked => {
-            root.node_clicked(""); // Desmarca seleção
+            if (!moved_significantly) {
+                root.canvas_clicked(self.mouse-x / 1px, self.mouse-y / 1px);
+            }
         }
     }
 
@@ -127,29 +149,6 @@ export component CanvasView inherits Rectangle {
                         font-weight: 700;
                         vertical-alignment: center;
                     }
-                }
-            }
-
-            group_touch := TouchArea {
-                property <length> last_group_x;
-                property <length> last_group_y;
-
-                pointer-event(event) => {
-                    if (event.kind == PointerEventKind.down) {
-                        last_group_x = self.mouse-x;
-                        last_group_y = self.mouse-y;
-                    }
-                    if (event.kind == PointerEventKind.up || event.kind == PointerEventKind.cancel) {
-                        root.node_released(node.id);
-                    }
-                }
-
-                clicked => { root.node_clicked(node.id); }
-
-                moved => {
-                    root.node_dragged(node.id, (self.mouse-x - last_group_x) / 1px, (self.mouse-y - last_group_y) / 1px);
-                    last_group_x = self.mouse-x;
-                    last_group_y = self.mouse-y;
                 }
             }
         }
@@ -366,46 +365,6 @@ export component CanvasView inherits Rectangle {
                         color: Theme.text_secondary;
                         font-size: 12px;
                         wrap: word-wrap;
-                    }
-                }
-            }
-
-            // Área de toque para seleção e arraste do cartão (ativo apenas quando não em edição)
-            if (!node.is_editing): card_touch := TouchArea {
-                property <length> last_abs_x;
-                property <length> last_abs_y;
-
-                pointer-event(event) => {
-                    if (event.kind == PointerEventKind.down) {
-                        last_abs_x = node.screen_x * 1px + self.mouse-x;
-                        last_abs_y = node.screen_y * 1px + self.mouse-y;
-                    }
-                    if (event.kind == PointerEventKind.up || event.kind == PointerEventKind.cancel) {
-                        root.node_released(node.id);
-                    }
-                }
-
-                clicked => {
-                    if (root.connecting_source_id != "") {
-                        if (root.connecting_source_id != node.id) {
-                            root.connect_cards_requested(root.connecting_source_id, node.id);
-                        }
-                        root.connecting_source_id = "";
-                    } else {
-                        root.node_clicked(node.id);
-                    }
-                }
-
-                moved => {
-                    let current_abs_x = node.screen_x * 1px + self.mouse-x;
-                    let current_abs_y = node.screen_y * 1px + self.mouse-y;
-                    let dx = (current_abs_x - last_abs_x) / 1px;
-                    let dy = (current_abs_y - last_abs_y) / 1px;
-
-                    if (Math.abs(dx) > 0.05 || Math.abs(dy) > 0.05) {
-                        root.node_dragged(node.id, dx, dy);
-                        last_abs_x = current_abs_x;
-                        last_abs_y = current_abs_y;
                     }
                 }
             }
