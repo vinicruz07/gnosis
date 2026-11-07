@@ -427,6 +427,14 @@ fn main() {
     app.set_grimoire_status_message("".into());
     app.set_grimoire_status_is_error(false);
 
+    // Detecção e inicialização do modo Mobile (Fase 18)
+    let is_mobile_detected = cfg!(target_os = "android") || std::env::var("GNOSIS_MOBILE").is_ok();
+    if is_mobile_detected {
+        state.set_mobile(true);
+        app.set_is_mobile(true);
+    }
+    app.set_mobile_drawer_open(false);
+
     let state_arc = Arc::new(Mutex::new(state));
     let tab_arc = Arc::new(Mutex::new(tab_mgr));
     let editor_arc = Arc::new(Mutex::new(editor_ctrl));
@@ -2928,6 +2936,138 @@ fn main() {
         });
     }
 
+    // Callbacks de Navegação Móvel (Fase 18)
+    // 1. Alternar Gaveta Lateral Móvel (Drawer)
+    {
+        let app_weak = app_weak.clone();
+        let state_arc = Arc::clone(&state_arc);
+        app.on_toggle_mobile_drawer(move || {
+            if let Ok(mut st) = state_arc.lock() {
+                st.toggle_mobile_drawer();
+                let is_open = st.mobile_drawer_open;
+                if let Some(w) = app_weak.upgrade() {
+                    w.set_mobile_drawer_open(is_open);
+                }
+            }
+        });
+    }
+
+    // 2. Fechar Gaveta Lateral Móvel (Drawer)
+    {
+        let app_weak = app_weak.clone();
+        let state_arc = Arc::clone(&state_arc);
+        app.on_close_mobile_drawer(move || {
+            if let Ok(mut st) = state_arc.lock() {
+                st.close_mobile_drawer();
+                if let Some(w) = app_weak.upgrade() {
+                    w.set_mobile_drawer_open(false);
+                }
+            }
+        });
+    }
+
+    // 3. Selecionar Aba Notas (Mobile)
+    {
+        let app_weak = app_weak.clone();
+        app.on_mobile_select_note_tab(move || {
+            if let Some(w) = app_weak.upgrade() {
+                w.set_is_graph_view(false);
+                w.set_is_canvas_view(false);
+            }
+        });
+    }
+
+    // 4. Selecionar Aba Grafo (Mobile)
+    {
+        let app_weak = app_weak.clone();
+        let graph_arc = Arc::clone(&graph_arc);
+        app.on_mobile_select_graph_tab(move || {
+            if let Some(w) = app_weak.upgrade() {
+                w.set_is_canvas_view(false);
+                w.set_is_graph_view(true);
+                if let Ok(mut gc) = graph_arc.lock() {
+                    gc.wake_up();
+                    for _ in 0..20 {
+                        gc.step();
+                    }
+                    let nodes = to_slint_graph_nodes(&gc.get_visual_nodes(400.0, 300.0));
+                    let edges = to_slint_graph_edges(&gc.get_visual_edges(400.0, 300.0));
+                    w.set_graph_nodes(ModelRc::new(VecModel::from(nodes)));
+                    w.set_graph_edges(ModelRc::new(VecModel::from(edges)));
+                    w.set_graph_is_sleeping(gc.is_sleeping());
+                }
+            }
+        });
+    }
+
+    // 5. Selecionar Aba Membrana (Mobile)
+    {
+        let app_weak = app_weak.clone();
+        let canvas_arc = Arc::clone(&canvas_arc);
+        app.on_mobile_select_canvas_tab(move || {
+            if let Some(w) = app_weak.upgrade() {
+                w.set_is_graph_view(false);
+                w.set_is_canvas_view(true);
+                if let Ok(cc) = canvas_arc.lock() {
+                    let (nodes, edges) = cc.to_visual_models();
+                    w.set_canvas_nodes(ModelRc::new(VecModel::from(to_slint_canvas_nodes(&nodes))));
+                    w.set_canvas_edges(ModelRc::new(VecModel::from(to_slint_canvas_edges(&edges))));
+                    w.set_canvas_zoom_level(cc.zoom);
+                    w.set_canvas_node_count(cc.canvas_data.node_count() as i32);
+                    w.set_canvas_edge_count(cc.canvas_data.edge_count() as i32);
+                }
+            }
+        });
+    }
+
+    // Callbacks de Multi-Touch, Gestos e Teclado Virtual (Fase 19)
+    // 1. Gesto Pinch-to-Zoom no Grafo 2D
+    {
+        let app_weak = app_weak.clone();
+        let graph_arc = Arc::clone(&graph_arc);
+        app.on_graph_pinch_zoomed(move |factor, focus_x, focus_y| {
+            if let Ok(mut gc) = graph_arc.lock() {
+                gc.pinch_zoom(factor, focus_x, focus_y);
+                if let Some(w) = app_weak.upgrade() {
+                    let nodes = to_slint_graph_nodes(&gc.get_visual_nodes(400.0, 300.0));
+                    let edges = to_slint_graph_edges(&gc.get_visual_edges(400.0, 300.0));
+                    w.set_graph_nodes(ModelRc::new(VecModel::from(nodes)));
+                    w.set_graph_edges(ModelRc::new(VecModel::from(edges)));
+                }
+            }
+        });
+    }
+
+    // 2. Gesto Pinch-to-Zoom na Membrana (Canvas 2D)
+    {
+        let app_weak = app_weak.clone();
+        let canvas_arc = Arc::clone(&canvas_arc);
+        app.on_canvas_pinch_zoomed(move |factor, focus_x, focus_y| {
+            if let Ok(mut cc) = canvas_arc.lock() {
+                cc.pinch_zoom(factor, focus_x, focus_y);
+                if let Some(w) = app_weak.upgrade() {
+                    let (nodes, edges) = cc.to_visual_models();
+                    w.set_canvas_nodes(ModelRc::new(VecModel::from(to_slint_canvas_nodes(&nodes))));
+                    w.set_canvas_edges(ModelRc::new(VecModel::from(to_slint_canvas_edges(&edges))));
+                    w.set_canvas_zoom_level(cc.zoom);
+                }
+            }
+        });
+    }
+
+    // 3. Compensação de Inset para Teclado Virtual (IME)
+    {
+        let app_weak = app_weak.clone();
+        let state_arc = Arc::clone(&state_arc);
+        app.on_set_ime_bottom_inset(move |inset_len| {
+            if let Ok(mut st) = state_arc.lock() {
+                st.set_ime_bottom_inset(inset_len);
+                if let Some(w) = app_weak.upgrade() {
+                    w.set_ime_bottom_inset(inset_len);
+                }
+            }
+        });
+    }
 
     // Suporte a modo headless para testes e CI
     if std::env::var("GNOSIS_HEADLESS").is_ok() {

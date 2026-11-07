@@ -1,0 +1,279 @@
+import { Theme } from "theme.slint";
+import { TreeItemData, Sidebar } from "sidebar.slint";
+
+export component MobileBottomBar inherits Rectangle {
+    in property <bool> is_note_active: true;
+    in property <bool> is_graph_active: false;
+    in property <bool> is_canvas_active: false;
+
+    callback note_selected();
+    callback graph_selected();
+    callback canvas_selected();
+    callback search_selected();
+
+    height: 56px;
+    background: Theme.sidebar_bg;
+
+    Rectangle {
+        y: 0px;
+        height: 1px;
+        width: 100%;
+        background: Theme.border;
+    }
+
+    HorizontalLayout {
+        alignment: space-around;
+        padding-top: 4px;
+        padding-bottom: 4px;
+
+        // Botão Notas
+        Rectangle {
+            width: 72px;
+            height: 48px;
+            border-radius: 8px;
+            background: root.is_note_active ? Theme.surface : (touch_note.has-hover ? Theme.surface_hover : transparent);
+
+            VerticalLayout {
+                alignment: center;
+                spacing: 2px;
+
+                Text {
+                    text: "📝";
+                    font-size: 16px;
+                    horizontal-alignment: center;
+                }
+                Text {
+                    text: "Notas";
+                    font-size: 10px;
+                    font-weight: root.is_note_active ? 700 : 400;
+                    color: root.is_note_active ? Theme.accent : Theme.text_secondary;
+                    horizontal-alignment: center;
+                }
+            }
+
+            touch_note := TouchArea {
+                clicked => { root.note_selected(); }
+            }
+        }
+
+        // Botão Grafo
+        Rectangle {
+            width: 72px;
+            height: 48px;
+            border-radius: 8px;
+            background: root.is_graph_active ? Theme.surface : (touch_graph.has-hover ? Theme.surface_hover : transparent);
+
+            VerticalLayout {
+                alignment: center;
+                spacing: 2px;
+
+                Text {
+                    text: "🕸️";
+                    font-size: 16px;
+                    horizontal-alignment: center;
+                }
+                Text {
+                    text: "Grafo";
+                    font-size: 10px;
+                    font-weight: root.is_graph_active ? 700 : 400;
+                    color: root.is_graph_active ? Theme.accent : Theme.text_secondary;
+                    horizontal-alignment: center;
+                }
+            }
+
+            touch_graph := TouchArea {
+                clicked => { root.graph_selected(); }
+            }
+        }
+
+        // Botão Membrana
+        Rectangle {
+            width: 72px;
+            height: 48px;
+            border-radius: 8px;
+            background: root.is_canvas_active ? Theme.surface : (touch_canvas.has-hover ? Theme.surface_hover : transparent);
+
+            VerticalLayout {
+                alignment: center;
+                spacing: 2px;
+
+                Text {
+                    text: "🧠";
+                    font-size: 16px;
+                    horizontal-alignment: center;
+                }
+                Text {
+                    text: "Membrana";
+                    font-size: 10px;
+                    font-weight: root.is_canvas_active ? 700 : 400;
+                    color: root.is_canvas_active ? Theme.accent : Theme.text_secondary;
+                    horizontal-alignment: center;
+                }
+            }
+
+            touch_canvas := TouchArea {
+                clicked => { root.canvas_selected(); }
+            }
+        }
+
+        // Botão Buscar
+        Rectangle {
+            width: 72px;
+            height: 48px;
+            border-radius: 8px;
+            background: touch_search.has-hover ? Theme.surface_hover : transparent;
+
+            VerticalLayout {
+                alignment: center;
+                spacing: 2px;
+
+                Text {
+                    text: "🔍";
+                    font-size: 16px;
+                    horizontal-alignment: center;
+                }
+                Text {
+                    text: "Buscar";
+                    font-size: 10px;
+                    color: Theme.text_secondary;
+                    horizontal-alignment: center;
+                }
+            }
+
+            touch_search := TouchArea {
+                clicked => { root.search_selected(); }
+            }
+        }
+    }
+}
+
+export component MobileDrawer inherits Rectangle {
+    in property <bool> is_open: false;
+    in property <string> vault_title: "Grimório";
+    in property <[TreeItemData]> items: [];
+
+    callback close_requested();
+    callback note_clicked(string);
+    callback folder_toggled(string);
+    callback new_note_requested();
+    callback new_membrane_requested();
+    callback settings_clicked();
+    callback grimoire_clicked();
+
+    x: 0px;
+    y: 0px;
+    width: 100%;
+    height: 100%;
+    visible: root.is_open;
+
+    // Fundo escuro semitransparente (tocar fora fecha a gaveta)
+    backdrop := Rectangle {
+        width: 100%;
+        height: 100%;
+        background: #00000088;
+
+        TouchArea {
+            clicked => { root.close_requested(); }
+        }
+    }
+
+    // Painel lateral deslizante
+    drawer_panel := Rectangle {
+        x: 0px;
+        y: 0px;
+        width: 290px;
+        height: 100%;
+        background: Theme.sidebar_bg;
+
+        Rectangle {
+            x: parent.width - 1px;
+            width: 1px;
+            height: 100%;
+            background: Theme.border;
+        }
+
+        VerticalLayout {
+            padding: 0px;
+            spacing: 0px;
+
+            // Cabeçalho da gaveta com botão Fechar
+            Rectangle {
+                height: 48px;
+                background: Theme.sidebar_bg;
+
+                HorizontalLayout {
+                    padding-left: 16px;
+                    padding-right: 12px;
+                    alignment: space-between;
+
+                    Text {
+                        text: "📖 " + root.vault_title;
+                        color: Theme.text_primary;
+                        font-size: 14px;
+                        font-weight: 700;
+                        vertical-alignment: center;
+                    }
+
+                    Rectangle {
+                        width: 32px;
+                        height: 32px;
+                        border-radius: 6px;
+                        background: touch_close.has-hover ? Theme.surface_hover : transparent;
+                        y: (parent.height - self.height) / 2;
+
+                        Text {
+                            text: "✕";
+                            color: Theme.text_muted;
+                            font-size: 14px;
+                            vertical-alignment: center;
+                            horizontal-alignment: center;
+                        }
+
+                        touch_close := TouchArea {
+                            clicked => { root.close_requested(); }
+                        }
+                    }
+                }
+
+                Rectangle {
+                    y: parent.height - 1px;
+                    height: 1px;
+                    width: 100%;
+                    background: Theme.border;
+                }
+            }
+
+            // Árvore de Arquivos
+            Sidebar {
+                vertical-stretch: 1;
+                vault_title: root.vault_title;
+                items: root.items;
+                is_collapsed: false;
+
+                note_clicked(path) => {
+                    root.close_requested();
+                    root.note_clicked(path);
+                }
+                folder_toggled(path) => { root.folder_toggled(path); }
+                toggle_sidebar => { root.close_requested(); }
+                new_note_requested => {
+                    root.close_requested();
+                    root.new_note_requested();
+                }
+                new_membrane_requested => {
+                    root.close_requested();
+                    root.new_membrane_requested();
+                }
+                settings_clicked => {
+                    root.close_requested();
+                    root.settings_clicked();
+                }
+                grimoire_clicked => {
+                    root.close_requested();
+                    root.grimoire_clicked();
+                }
+            }
+        }
+    }
+}
+

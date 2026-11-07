@@ -11,6 +11,7 @@ import { SyncModal, PeerData } from "sync_modal.slint";
 import { StickerPickerModal, StickerItemSlint } from "sticker_picker.slint";
 import { SettingsModal } from "settings_modal.slint";
 import { GrimoireModal, GrimoireItemData } from "grimoire_modal.slint";
+import { MobileBottomBar, MobileDrawer } from "mobile_nav.slint";
 export { GrimoireItemData }
 
 
@@ -18,7 +19,7 @@ export component AppWindow inherits Window {
     title: "Gnosis";
     preferred-width: 1024px;
     preferred-height: 700px;
-    min-width: 640px;
+    min-width: 320px;
     min-height: 400px;
     background: Theme.background;
     forward-focus: root_focus;
@@ -243,6 +244,22 @@ export component AppWindow inherits Window {
     callback open_existing_grimoire_requested(string);
     callback grimoire_section_changed(int);
 
+    // Propriedades e Callbacks Mobile Responsivo (Fase 18)
+    in-out property <bool> is_mobile: false;
+    in-out property <bool> mobile_drawer_open: false;
+
+    callback toggle_mobile_drawer();
+    callback close_mobile_drawer();
+    callback mobile_select_note_tab();
+    callback mobile_select_graph_tab();
+    callback mobile_select_canvas_tab();
+
+    // Propriedades e Callbacks de Multi-Touch, Gestos e Teclado Virtual (Fase 19)
+    in-out property <length> ime_bottom_inset: 0px;
+    callback set_ime_bottom_inset(length);
+    callback graph_pinch_zoomed(float, float, float);
+    callback canvas_pinch_zoomed(float, float, float);
+
 
     // Layout Principal
     VerticalLayout {
@@ -253,8 +270,8 @@ export component AppWindow inherits Window {
             vertical-stretch: 1;
             spacing: 0px;
 
-            // Barra Lateral de Arquivos
-            Sidebar {
+            // Barra Lateral de Arquivos (Desktop)
+            if (!root.is_mobile): Sidebar {
                 vault_title: root.vault_name;
                 items: root.file_tree;
                 is_collapsed: root.sidebar_collapsed;
@@ -269,7 +286,7 @@ export component AppWindow inherits Window {
             }
 
             // Botão de reabertura da barra lateral quando recolhida
-            if (root.sidebar_collapsed): Rectangle {
+            if (!root.is_mobile && root.sidebar_collapsed): Rectangle {
                 width: 28px;
                 background: Theme.sidebar_bg;
 
@@ -298,8 +315,8 @@ export component AppWindow inherits Window {
                 horizontal-stretch: 1;
                 spacing: 0px;
 
-                // Barra de Abas Superiores
-                TabBar {
+                // Barra de Abas Superiores (Desktop)
+                if (!root.is_mobile): TabBar {
                     tabs: root.tabs;
                     can_go_back: root.can_go_back;
                     can_go_forward: root.can_go_forward;
@@ -335,6 +352,27 @@ export component AppWindow inherits Window {
                             spacing: 8px;
                             alignment: start;
 
+                            // Botão Hambúrguer Mobile (Abre a gaveta lateral)
+                            if (root.is_mobile): Rectangle {
+                                width: 32px;
+                                height: 32px;
+                                border-radius: 6px;
+                                background: touch_drawer.has-hover ? Theme.surface_hover : transparent;
+                                y: (parent.height - self.height) / 2;
+
+                                Text {
+                                    text: "☰";
+                                    font-size: 18px;
+                                    color: Theme.text_primary;
+                                    vertical-alignment: center;
+                                    horizontal-alignment: center;
+                                }
+
+                                touch_drawer := TouchArea {
+                                    clicked => { root.toggle_mobile_drawer(); }
+                                }
+                            }
+
                             if (!root.is_graph_view && !root.is_canvas_view): Rectangle {
                                 width: 28px;
                                 height: 28px;
@@ -366,15 +404,13 @@ export component AppWindow inherits Window {
                             }
                         }
 
-
-
                         // Ações Rápidas: Alternar Grafo, Canvas, Alternar Edição/Leitura e Quick Switcher
                         HorizontalLayout {
                             spacing: 8px;
                             alignment: end;
 
-                            // Botão Alternar Visualização do Grafo (Ctrl+G)
-                            Rectangle {
+                            // Botão Alternar Visualização do Grafo (Ctrl+G) - Apenas Desktop
+                            if (!root.is_mobile): Rectangle {
                                 width: 110px;
                                 height: 28px;
                                 border-radius: 4px;
@@ -408,8 +444,8 @@ export component AppWindow inherits Window {
                                 }
                             }
 
-                            // Botão Alternar Visualização do Canvas 2D
-                            Rectangle {
+                            // Botão Alternar Visualização do Canvas 2D - Apenas Desktop
+                            if (!root.is_mobile): Rectangle {
                                 width: 110px;
                                 height: 28px;
                                 border-radius: 4px;
@@ -445,7 +481,7 @@ export component AppWindow inherits Window {
 
                             // Botão Alternar Modo Live Preview / Fonte Bruta (apenas se não estiver no Grafo nem no Canvas)
                             if (!root.is_graph_view && !root.is_canvas_view): Rectangle {
-                                width: 140px;
+                                width: root.is_mobile ? 36px : 140px;
                                 height: 28px;
                                 border-radius: 4px;
                                 background: Theme.surface;
@@ -458,14 +494,15 @@ export component AppWindow inherits Window {
                                     spacing: 6px;
 
                                     Text {
-                                        text: root.is_editing ? "📄 Fonte Bruta" : "✨ Live Preview";
+                                        text: root.is_mobile ? (root.is_editing ? "📄" : "✨") : (root.is_editing ? "📄 Fonte Bruta" : "✨ Live Preview");
                                         color: root.is_editing ? #f9e2af : Theme.accent;
-                                        font-size: 11px;
+                                        font-size: root.is_mobile ? 14px : 11px;
                                         font-weight: 600;
                                         vertical-alignment: center;
+                                        horizontal-alignment: center;
                                     }
 
-                                    Text {
+                                    if (!root.is_mobile): Text {
                                         text: "(Ctrl+E)";
                                         color: Theme.text_muted;
                                         font-size: 10px;
@@ -478,8 +515,8 @@ export component AppWindow inherits Window {
                                 }
                             }
 
-                            // Botão de Atalho para o Quick Switcher
-                            Rectangle {
+                            // Botão de Atalho para o Quick Switcher - Apenas Desktop
+                            if (!root.is_mobile): Rectangle {
                                 width: 110px;
                                 height: 28px;
                                 border-radius: 4px;
@@ -558,6 +595,7 @@ export component AppWindow inherits Window {
                     zoom_in => { root.graph_zoom_in(); }
                     zoom_out => { root.graph_zoom_out(); }
                     zoom_reset => { root.graph_zoom_reset(); }
+                    pinch_zoomed(f, cx, cy) => { root.graph_pinch_zoomed(f, cx, cy); }
                     unpin_node_requested(id) => { root.graph_unpin_node_requested(id); }
                     add_node_requested => { root.graph_add_node_requested(); }
                     delete_node_requested(id) => { root.graph_delete_node_requested(id); }
@@ -592,6 +630,7 @@ export component AppWindow inherits Window {
                     zoom_in => { root.canvas_zoom_in(); }
                     zoom_out => { root.canvas_zoom_out(); }
                     zoom_reset => { root.canvas_zoom_reset(); }
+                    pinch_zoomed(f, cx, cy) => { root.canvas_pinch_zoomed(f, cx, cy); }
                     fit_all => { root.canvas_fit_all(); }
                     add_text_requested => { root.canvas_add_text_requested(); }
                     add_note_requested => { root.canvas_add_note_requested(); }
@@ -709,8 +748,8 @@ export component AppWindow inherits Window {
             }
         }
 
-        // Barra de Status Inferior
-        StatusBar {
+        // Barra de Status Inferior (Desktop)
+        if (!root.is_mobile): StatusBar {
             vault_name: root.vault_name;
             sync_status: root.sync_status;
             sync_color: root.sync_color;
@@ -720,6 +759,24 @@ export component AppWindow inherits Window {
             is_source_mode: root.is_editing;
             theme_clicked => { root.cycle_theme(); }
             sync_clicked => { root.open_sync_modal(); }
+        }
+
+        // Barra de Navegação Inferior Tátil (Mobile)
+        if (root.is_mobile): MobileBottomBar {
+            is_note_active: !root.is_graph_view && !root.is_canvas_view;
+            is_graph_active: root.is_graph_view;
+            is_canvas_active: root.is_canvas_view;
+
+            note_selected => { root.mobile_select_note_tab(); }
+            graph_selected => { root.mobile_select_graph_tab(); }
+            canvas_selected => { root.mobile_select_canvas_tab(); }
+            search_selected => { root.open_quick_switcher("files"); }
+        }
+
+        // Compensação de Viewport para Teclado Virtual Móvel (IME Insets)
+        if (root.ime_bottom_inset > 0px): Rectangle {
+            height: root.ime_bottom_inset;
+            background: Theme.background;
         }
     }
 
@@ -799,6 +856,36 @@ export component AppWindow inherits Window {
         create_grimoire_requested(name, path) => { root.create_grimoire_requested(name, path); }
         open_existing_requested(path) => { root.open_existing_grimoire_requested(path); }
         section_changed(sec) => { root.grimoire_section_changed(sec); }
+    }
+
+    // Gaveta Lateral Deslizante com Backdrop (Mobile Drawer)
+    if (root.is_mobile): MobileDrawer {
+        is_open: root.mobile_drawer_open;
+        vault_title: root.vault_name;
+        items: root.file_tree;
+
+        close_requested => { root.close_mobile_drawer(); }
+        note_clicked(path) => {
+            root.close_mobile_drawer();
+            root.note_selected(path);
+        }
+        folder_toggled(path) => { root.folder_toggled(path); }
+        new_note_requested => {
+            root.close_mobile_drawer();
+            root.new_note_requested();
+        }
+        new_membrane_requested => {
+            root.close_mobile_drawer();
+            root.new_membrane_requested();
+        }
+        settings_clicked => {
+            root.close_mobile_drawer();
+            root.open_settings();
+        }
+        grimoire_clicked => {
+            root.close_mobile_drawer();
+            root.open_grimoire_modal();
+        }
     }
 }
 

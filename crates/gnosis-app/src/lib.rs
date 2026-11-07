@@ -22,6 +22,7 @@ pub mod sticker_picker;
 pub mod sync_dialog;
 pub mod tabs;
 pub mod theme;
+pub mod touch;
 
 pub use canvas_view::{CanvasEdgeVisual, CanvasNodeVisual, CanvasViewController};
 pub use editor::{EditorController, EditorMode, RenderBlockModel};
@@ -35,6 +36,7 @@ pub use sticker_picker::{StickerItem, StickerPickerController};
 pub use sync_dialog::{ConnectedPeerInfo, SyncDialogController};
 pub use tabs::{EditorPane, NavigationHistory, SplitDirection, TabItem, TabManager};
 pub use theme::{ThemeColors, ThemeManager};
+pub use touch::{InertiaPhysics, PinchState, TouchAction, TouchGestureTracker, TouchPoint};
 
 
 // Inclui os módulos e componentes de janela compilados pelo Slint no build.rs

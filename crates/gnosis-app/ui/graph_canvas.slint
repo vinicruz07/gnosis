@@ -42,6 +42,7 @@ export component GraphCanvas inherits Rectangle {
     callback zoom_in();
     callback zoom_out();
     callback zoom_reset();
+    callback pinch_zoomed(float, float, float);
     callback unpin_node_requested(string);
     callback add_node_requested();
     callback delete_node_requested(string);

@@ -216,6 +216,18 @@ impl GraphViewController {
         self.zoom = (self.zoom * factor).clamp(0.2, 3.0);
     }
 
+    /// Aplica zoom centrado em um ponto focal de tela (ex: centroide de pinça multi-touch móvel).
+    pub fn pinch_zoom(&mut self, factor: f32, focus_x: f32, focus_y: f32) {
+        let old_zoom = self.zoom;
+        let new_zoom = (self.zoom * factor).clamp(0.2, 3.0);
+        if (new_zoom - old_zoom).abs() > 0.0001 {
+            let scale = new_zoom / old_zoom;
+            self.pan_x = focus_x - (focus_x - self.pan_x) * scale;
+            self.pan_y = focus_y - (focus_y - self.pan_y) * scale;
+            self.zoom = new_zoom;
+        }
+    }
+
     /// Aumenta o zoom do grafo em 15%.
     pub fn zoom_in(&mut self) {
         self.zoom_by(1.15);
@@ -708,5 +720,28 @@ mod tests {
         let panned = controller.handle_pointer_move(10.0, 5.0);
         assert!(!panned); // false indica que foi pan de câmera
         assert_eq!(controller.pan_x, initial_pan_x + 10.0);
+    }
+
+    #[test]
+    fn test_graph_view_pinch_zoom_focal_point() {
+        let graph = build_test_graph();
+        let mut controller = GraphViewController::new(graph);
+
+        let initial_zoom = controller.zoom;
+        let focus_x = 250.0;
+        let focus_y = 180.0;
+
+        // Zoom in centrado no ponto focal (250, 180)
+        controller.pinch_zoom(1.5, focus_x, focus_y);
+        assert!((controller.zoom - initial_zoom * 1.5).abs() < 0.001);
+        // O pan da câmera deve ter sido compensado para preservar a posição relativa
+        assert_ne!(controller.pan_x, 0.0);
+        assert_ne!(controller.pan_y, 0.0);
+
+        // Zoom out inverso deve restaurar as coordenadas
+        controller.pinch_zoom(1.0 / 1.5, focus_x, focus_y);
+        assert!((controller.zoom - initial_zoom).abs() < 0.01);
+        assert!((controller.pan_x).abs() < 0.01);
+        assert!((controller.pan_y).abs() < 0.01);
     }
 }

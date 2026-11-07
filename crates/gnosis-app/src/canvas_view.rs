@@ -236,6 +236,19 @@ impl CanvasViewController {
         self.zoom = new_zoom;
     }
 
+    /// Aplica zoom centrado em um ponto focal de tela (ex: centroide de pinça multi-touch móvel).
+    pub fn pinch_zoom(&mut self, factor: f32, focus_x: f32, focus_y: f32) {
+        let old_zoom = self.zoom;
+        let new_zoom = (self.zoom * factor).clamp(0.2, 3.0);
+        if (new_zoom - old_zoom).abs() > 0.0001 {
+            let scale = new_zoom / old_zoom;
+            self.camera_x = focus_x - (focus_x - self.camera_x) * scale;
+            self.camera_y = focus_y - (focus_y - self.camera_y) * scale;
+            self.zoom = new_zoom;
+            self.is_modified = true;
+        }
+    }
+
     /// Aumenta o zoom em 15%.
     pub fn zoom_in(&mut self) {
         self.zoom_by(1.15);
@@ -1060,5 +1073,25 @@ mod tests {
         let panned = ctrl.handle_pointer_move(30.0, 40.0);
         assert!(!panned);
         assert_eq!(ctrl.camera_x, initial_cam_x + 30.0);
+    }
+
+    #[test]
+    fn test_canvas_view_pinch_zoom_focal_point() {
+        let mut ctrl = CanvasViewController::new(CanvasData::new());
+        let initial_cam_x = ctrl.camera_x;
+        let initial_cam_y = ctrl.camera_y;
+        let initial_zoom = ctrl.zoom;
+        let focus_x = 300.0;
+        let focus_y = 200.0;
+
+        ctrl.pinch_zoom(1.4, focus_x, focus_y);
+        assert!((ctrl.zoom - initial_zoom * 1.4).abs() < 0.001);
+        assert_ne!(ctrl.camera_x, initial_cam_x);
+        assert_ne!(ctrl.camera_y, initial_cam_y);
+
+        ctrl.pinch_zoom(1.0 / 1.4, focus_x, focus_y);
+        assert!((ctrl.zoom - initial_zoom).abs() < 0.01);
+        assert!((ctrl.camera_x - initial_cam_x).abs() < 0.01);
+        assert!((ctrl.camera_y - initial_cam_y).abs() < 0.01);
     }
 }

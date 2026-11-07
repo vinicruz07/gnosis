@@ -39,6 +39,9 @@ pub struct AppState {
     pub sync_status: String,
     pub entries: Vec<FileTreeEntry>,
     pub expanded_folders: HashSet<String>,
+    pub is_mobile: bool,
+    pub mobile_drawer_open: bool,
+    pub ime_bottom_inset: f32,
 }
 
 impl AppState {
@@ -55,6 +58,38 @@ impl AppState {
             sync_status: "Sincronizado (Local)".to_string(),
             entries: Vec::new(),
             expanded_folders: HashSet::new(),
+            is_mobile: false,
+            mobile_drawer_open: false,
+            ime_bottom_inset: 0.0,
+        }
+    }
+
+    /// Define o recuo inferior da janela causado pelo teclado virtual (IME) no mobile.
+    pub fn set_ime_bottom_inset(&mut self, inset: f32) {
+        self.ime_bottom_inset = inset.max(0.0);
+    }
+
+    /// Retorna o recuo inferior do teclado virtual em pixels.
+    pub fn ime_bottom_inset(&self) -> f32 {
+        self.ime_bottom_inset
+    }
+
+    /// Alterna a abertura da gaveta lateral em dispositivos móveis.
+    pub fn toggle_mobile_drawer(&mut self) -> bool {
+        self.mobile_drawer_open = !self.mobile_drawer_open;
+        self.mobile_drawer_open
+    }
+
+    /// Fecha a gaveta lateral móvel.
+    pub fn close_mobile_drawer(&mut self) {
+        self.mobile_drawer_open = false;
+    }
+
+    /// Define o modo móvel ativando ou desativando layouts adaptativos.
+    pub fn set_mobile(&mut self, is_mobile: bool) {
+        self.is_mobile = is_mobile;
+        if !is_mobile {
+            self.mobile_drawer_open = false;
         }
     }
 
@@ -392,6 +427,44 @@ mod tests {
             assert_eq!(m.icon, "📜");
             assert!(!m.is_folder);
         }
+    }
+
+    #[test]
+    fn test_state_mobile_drawer_and_mode() {
+        let mut state = AppState::new("Grimório Mobile", "/storage/emulated/0/Gnosis");
+        assert!(!state.is_mobile);
+        assert!(!state.mobile_drawer_open);
+
+        state.set_mobile(true);
+        assert!(state.is_mobile);
+
+        // Abre e fecha drawer
+        let opened = state.toggle_mobile_drawer();
+        assert!(opened);
+        assert!(state.mobile_drawer_open);
+
+        state.close_mobile_drawer();
+        assert!(!state.mobile_drawer_open);
+
+        // Desativar modo mobile deve forçar fechamento da gaveta
+        state.toggle_mobile_drawer();
+        assert!(state.mobile_drawer_open);
+        state.set_mobile(false);
+        assert!(!state.is_mobile);
+        assert!(!state.mobile_drawer_open);
+    }
+
+    #[test]
+    fn test_state_ime_bottom_inset() {
+        let mut state = AppState::new("Grimório Mobile", "/storage/emulated/0/Gnosis");
+        assert_eq!(state.ime_bottom_inset(), 0.0);
+
+        state.set_ime_bottom_inset(285.5);
+        assert_eq!(state.ime_bottom_inset(), 285.5);
+
+        // Valor negativo deve ser limitado a 0.0
+        state.set_ime_bottom_inset(-50.0);
+        assert_eq!(state.ime_bottom_inset(), 0.0);
     }
 }
 
