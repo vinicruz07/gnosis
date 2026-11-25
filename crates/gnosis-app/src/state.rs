@@ -287,6 +287,43 @@ impl AppState {
         Ok((new_path, src_entry.is_folder))
     }
 
+    /// Remove um arquivo ou pasta (e todos os seus descendentes) da árvore de estado.
+    /// Retorna `Ok(is_folder)`.
+    pub fn delete_entry(&mut self, path: &str) -> Result<bool, String> {
+        let clean = path.trim_matches('/');
+        if clean.is_empty() {
+            return Err("Caminho vazio para exclusão.".to_string());
+        }
+
+        let Some(entry) = self.entries.iter().find(|e| e.path == clean).cloned() else {
+            return Err(format!("Item não encontrado: {clean}"));
+        };
+
+        let prefix = format!("{clean}/");
+        self.entries.retain(|e| {
+            if e.path == clean {
+                return false;
+            }
+            if entry.is_folder && e.path.starts_with(&prefix) {
+                return false;
+            }
+            true
+        });
+
+        if entry.is_folder {
+            self.expanded_folders
+                .retain(|exp| exp != clean && !exp.starts_with(&prefix));
+        }
+
+        if let Some(active) = &self.active_note_path {
+            if active == clean || (entry.is_folder && active.starts_with(&prefix)) {
+                self.active_note_path = None;
+            }
+        }
+
+        Ok(entry.is_folder)
+    }
+
     /// Popula a lista de entradas a partir de caminhos relativos de arquivos (ex: "Notas/Estudos/Rust.md").
     pub fn populate_from_paths<I, S>(&mut self, paths: I)
     where

@@ -339,6 +339,31 @@ impl GrimoireManager {
         Ok(new_rel)
     }
 
+    /// Exclui um arquivo ou pasta (recursivamente) do Grimório ativo no disco.
+    pub fn delete_entry_in_active(&self, relative_path: &str) -> Result<(), String> {
+        let Some(active) = &self.active_grimoire else {
+            return Err("Nenhum Grimório ativo no momento.".to_string());
+        };
+
+        let clean = relative_path.trim().trim_matches(['/', '\\']);
+        if clean.is_empty() || clean.contains("..") {
+            return Err("Caminho inválido para exclusão.".to_string());
+        }
+
+        let target_abs = active.path.join(clean);
+        if !target_abs.exists() {
+            return Ok(());
+        }
+
+        if target_abs.is_dir() {
+            fs::remove_dir_all(&target_abs)
+                .map_err(|e| format!("Falha ao excluir pasta '{clean}': {e}"))
+        } else {
+            fs::remove_file(&target_abs)
+                .map_err(|e| format!("Falha ao excluir arquivo '{clean}': {e}"))
+        }
+    }
+
     /// Função recursiva auxiliar para varrer arquivos no disco ignorando pastas de sistema.
     fn scan_dir_recursive(root: &Path, current: &Path, results: &mut Vec<String>) {
         let Ok(read_dir) = fs::read_dir(current) else {

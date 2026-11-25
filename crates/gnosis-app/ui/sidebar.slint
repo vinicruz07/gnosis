@@ -23,12 +23,14 @@ export component Sidebar inherits Rectangle {
     callback new_membrane_requested();
     callback new_folder_requested(string, string);
     callback item_moved(string, string);
+    callback item_context_menu(string, bool, length, length);
+    callback sidebar_bg_context_menu(length, length);
     callback settings_clicked();
     callback grimoire_clicked();
 
-    // Estado interno para criação de pastas/subpastas
-    private property <bool> is_creating_folder: false;
-    private property <string> pending_folder_parent: "";
+    // Estado para criação de pastas/subpastas
+    in-out property <bool> is_creating_folder: false;
+    in-out property <string> pending_folder_parent: "";
     private property <string> pending_folder_name: "";
 
     // Estado interno para Drag & Drop de arquivos/pastas
@@ -327,6 +329,15 @@ export component Sidebar inherits Rectangle {
         list_flick := Flickable {
             vertical-stretch: 1;
 
+            // Clique com botão direito no fundo vazio da barra lateral
+            TouchArea {
+                pointer-event(event) => {
+                    if (event.button == PointerEventButton.right && event.kind == PointerEventKind.down) {
+                        root.sidebar_bg_context_menu(self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y);
+                    }
+                }
+            }
+
             VerticalLayout {
                 spacing: 2px;
                 alignment: start;
@@ -344,7 +355,16 @@ export component Sidebar inherits Rectangle {
                     touch_item := TouchArea {
                         mouse-cursor: root.drag_active ? grabbing : pointer;
                         pointer-event(event) => {
-                            if (event.button == PointerEventButton.left && event.kind == PointerEventKind.down) {
+                            if (event.button == PointerEventButton.right && event.kind == PointerEventKind.down) {
+                                root.drag_active = false;
+                                root.drag_source_path = "";
+                                root.item_context_menu(
+                                    item.path,
+                                    item.is_folder,
+                                    self.absolute-position.x + self.mouse-x,
+                                    self.absolute-position.y + self.mouse-y,
+                                );
+                            } else if (event.button == PointerEventButton.left && event.kind == PointerEventKind.down) {
                                 root.drag_source_path = item.path;
                                 root.drag_source_name = item.name;
                                 root.drag_start_y = self.absolute-position.y + self.mouse-y;

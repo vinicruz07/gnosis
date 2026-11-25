@@ -13,12 +13,12 @@ use gnosis_app::runtime::{self, RenderBackendMode};
 
 use gnosis_app::{
     AppState, AppWindow, CanvasEdgeSlint, CanvasEdgeVisual, CanvasNodeSlint, CanvasNodeVisual,
-    CanvasViewController, ConnectedPeerInfo, EditorController, EditorMode, EditorPane,
-    GraphEdgeSlint, GraphEdgeVisual, GraphNodeSlint, GraphNodeVisual, GraphViewController,
-    GrimoireItemData, GrimoireManager, PeerData, QuickItem, QuickItemData, QuickMode,
-    QuickSwitcherManager, RenderBlockData, RenderBlockModel, SettingsController, SplitDirection,
-    StickerItem, StickerItemSlint, StickerPickerController, SyncDialogController, TabData,
-    TabManager, Theme, ThemeColors, ThemeManager, TreeItemData, TreeItemModel,
+    CanvasViewController, ConnectedPeerInfo, ContextMenuItem, EditorController, EditorMode,
+    EditorPane, GraphEdgeSlint, GraphEdgeVisual, GraphNodeSlint, GraphNodeVisual,
+    GraphViewController, GrimoireItemData, GrimoireManager, PeerData, QuickItem, QuickItemData,
+    QuickMode, QuickSwitcherManager, RenderBlockData, RenderBlockModel, SettingsController,
+    SplitDirection, StickerItem, StickerItemSlint, StickerPickerController, SyncDialogController,
+    TabData, TabManager, Theme, ThemeColors, ThemeManager, TreeItemData, TreeItemModel,
 };
 
 use gnosis_graph::model::{EdgeType, KnowledgeGraph, NodeType};
@@ -411,6 +411,7 @@ fn main() {
     let mut settings_ctrl = SettingsController::new();
     settings_ctrl.settings_mut().engine_info = active_engine_desc.to_string();
     settings_ctrl.settings_mut().renderer_mode = active_renderer_mode.as_str().to_string();
+    settings_ctrl.settings_mut().confirm_before_delete = runtime::load_confirm_before_delete();
     let s = settings_ctrl.settings();
     app.set_settings_open(settings_ctrl.is_open());
     app.set_settings_active_tab(settings_ctrl.active_tab_index());
@@ -422,6 +423,7 @@ fn main() {
     app.set_settings_theme_name("Abyss".into());
     app.set_settings_engine_info(s.engine_info.as_str().into());
     app.set_settings_renderer_mode(active_renderer_mode.display_label().into());
+    app.set_settings_confirm_before_delete(s.confirm_before_delete);
     app.set_settings_app_version(s.version.as_str().into());
 
     let initial_grimoires = to_slint_grimoires(
@@ -2610,6 +2612,782 @@ fn main() {
                 if let Some(w) = app_weak.upgrade() {
                     w.set_settings_renderer_mode(next.display_label().into());
                 }
+            }
+        });
+    }
+
+    // 10. Alternar Confirmação Antes de Excluir
+    {
+        let app_weak = app_weak.clone();
+        let settings_arc = Arc::clone(&settings_arc);
+        app.on_settings_confirm_before_delete_toggled(move || {
+            if let Ok(mut sc) = settings_arc.lock() {
+                let next = !sc.settings().confirm_before_delete;
+                sc.settings_mut().confirm_before_delete = next;
+                let _ = runtime::save_confirm_before_delete(next);
+                if let Some(w) = app_weak.upgrade() {
+                    w.set_settings_confirm_before_delete(next);
+                }
+            }
+        });
+    }
+
+    // =========================================================================
+    // MENUS DE CONTEXTO (BOTÃO DIREITO) E CONFIRMAÇÃO DE EXCLUSÃO
+    // =========================================================================
+    #[derive(Clone)]
+    enum PendingDeleteTarget {
+        SidebarEntry { path: String, is_folder: bool },
+        GraphNode(String),
+        CanvasSelected,
+    }
+
+    #[derive(Default)]
+    struct ContextActionState {
+        sidebar_path: String,
+        sidebar_is_folder: bool,
+        editor_block_id: Option<usize>,
+        pending_delete: Option<PendingDeleteTarget>,
+    }
+
+    fn ctx_item(id: &str, label: &str, icon: &str) -> ContextMenuItem {
+        ContextMenuItem {
+            id: id.into(),
+            label: label.into(),
+            icon: icon.into(),
+            is_danger: false,
+            is_separator: false,
+        }
+    }
+
+    fn ctx_danger(id: &str, label: &str, icon: &str) -> ContextMenuItem {
+        ContextMenuItem {
+            id: id.into(),
+            label: label.into(),
+            icon: icon.into(),
+            is_danger: true,
+            is_separator: false,
+        }
+    }
+
+    fn ctx_sep() -> ContextMenuItem {
+        ContextMenuItem {
+            id: "".into(),
+            label: "".into(),
+            icon: "".into(),
+            is_danger: false,
+            is_separator: true,
+        }
+    }
+
+    fn execute_delete_target(
+        target: PendingDeleteTarget,
+        app_weak: &slint::Weak<AppWindow>,
+        state_arc: &Arc<Mutex<AppState>>,
+        grimoire_arc: &Arc<Mutex<GrimoireManager>>,
+        tab_arc: &Arc<Mutex<TabManager>>,
+        editor_arc: &Arc<Mutex<EditorController>>,
+    ) {
+        match target {
+            PendingDeleteTarget::SidebarEntry { path, .. } => {
+                if let Ok(gm) = grimoire_arc.lock() {
+                    if let Some(active) = gm.active_grimoire() {
+                        if active.path.join(&path).exists() {
+                            if let Err(err) = gm.delete_entry_in_active(&path) {
+                                tracing::warn!("Falha ao excluir no disco: {}", err);
+                                return;
+                            }
+                        }
+                    }
+                }
+
+                let deleted_folder = if let Ok(mut st) = state_arc.lock() {
+                    match st.delete_entry(&path) {
+                        Ok(is_dir) => {
+                            if let Some(w) = app_weak.upgrade() {
+                                let items = to_slint_tree(&st.visible_tree_items());
+                                w.set_file_tree(ModelRc::new(VecModel::from(items)));
+                                if st.active_note_path.is_none() {
+                                    w.set_active_note_title("Nenhuma nota selecionada".into());
+                                    w.set_active_note_content("".into());
+                                }
+                            }
+                            Some(is_dir)
+                        }
+                        Err(err) => {
+                            tracing::warn!("Falha ao remover entrada da árvore: {}", err);
+                            None
+                        }
+                    }
+                } else {
+                    None
+                };
+
+                if let Some(is_dir) = deleted_folder {
+                    if let Ok(mut tm) = tab_arc.lock() {
+                        tm.close_tabs_by_prefix(&path, is_dir);
+                        if let Some(w) = app_weak.upgrade() {
+                            let tabs = to_slint_tabs(tm.active_pane());
+                            w.set_tabs(ModelRc::new(VecModel::from(tabs)));
+                            if tm.active_pane().active_tab().is_none() {
+                                if let Ok(mut ed) = editor_arc.lock() {
+                                    ed.set_content("");
+                                    let ast = to_slint_ast_blocks(&ed.generate_render_blocks());
+                                    w.set_ast_blocks(ModelRc::new(VecModel::from(ast)));
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            PendingDeleteTarget::GraphNode(node_id) => {
+                if let Some(w) = app_weak.upgrade() {
+                    w.invoke_graph_delete_node_requested(node_id.as_str().into());
+                }
+            }
+            PendingDeleteTarget::CanvasSelected => {
+                if let Some(w) = app_weak.upgrade() {
+                    w.invoke_canvas_delete_selected_requested();
+                }
+            }
+        }
+    }
+
+    let ctx_state_arc = Arc::new(Mutex::new(ContextActionState::default()));
+
+    // Fechar menu de contexto
+    {
+        let app_weak = app_weak.clone();
+        app.on_context_menu_close_requested(move || {
+            if let Some(w) = app_weak.upgrade() {
+                w.set_context_menu_open(false);
+            }
+        });
+    }
+
+    // Botão direito em item da Sidebar
+    {
+        let app_weak = app_weak.clone();
+        let ctx_state_arc = Arc::clone(&ctx_state_arc);
+        app.on_sidebar_item_context_menu(move |path, is_folder, x, y| {
+            let path_str = path.to_string();
+            if let Ok(mut cs) = ctx_state_arc.lock() {
+                cs.sidebar_path = path_str.clone();
+                cs.sidebar_is_folder = is_folder;
+            }
+            let items = if is_folder {
+                vec![
+                    ctx_item("sb_new_note", "Nova Nota aqui", "📄"),
+                    ctx_item("sb_new_folder", "Nova Subpasta", "📁"),
+                    ctx_item("sb_new_membrane", "Nova Membrana aqui", "📜"),
+                    ctx_sep(),
+                    ctx_item("sb_copy_path", "Copiar Caminho", "📋"),
+                    ctx_sep(),
+                    ctx_danger("sb_delete", "Excluir Pasta", "🗑️"),
+                ]
+            } else {
+                vec![
+                    ctx_item("sb_open", "Abrir", "📖"),
+                    ctx_item("sb_new_note", "Nova Nota na mesma pasta", "📄"),
+                    ctx_sep(),
+                    ctx_item("sb_copy_link", "Copiar [[Wikilink]]", "🔗"),
+                    ctx_item("sb_copy_path", "Copiar Caminho", "📋"),
+                    ctx_sep(),
+                    ctx_danger("sb_delete", "Excluir Arquivo", "🗑️"),
+                ]
+            };
+            if let Some(w) = app_weak.upgrade() {
+                w.set_context_menu_items(ModelRc::new(VecModel::from(items)));
+                w.set_context_menu_x(x);
+                w.set_context_menu_y(y);
+                w.set_context_menu_open(true);
+            }
+        });
+    }
+
+    // Botão direito no fundo vazio da Sidebar
+    {
+        let app_weak = app_weak.clone();
+        let ctx_state_arc = Arc::clone(&ctx_state_arc);
+        app.on_sidebar_bg_context_menu(move |x, y| {
+            if let Ok(mut cs) = ctx_state_arc.lock() {
+                cs.sidebar_path.clear();
+                cs.sidebar_is_folder = true;
+            }
+            let items = vec![
+                ctx_item("sb_new_note", "Nova Nota na Raiz", "📄"),
+                ctx_item("sb_new_folder", "Nova Pasta na Raiz", "📁"),
+                ctx_item("sb_new_membrane", "Nova Membrana na Raiz", "📜"),
+            ];
+            if let Some(w) = app_weak.upgrade() {
+                w.set_context_menu_items(ModelRc::new(VecModel::from(items)));
+                w.set_context_menu_x(x);
+                w.set_context_menu_y(y);
+                w.set_context_menu_open(true);
+            }
+        });
+    }
+
+    // Botão direito na Nota (Live Preview ou Modo Fonte)
+    {
+        let app_weak = app_weak.clone();
+        let ctx_state_arc = Arc::clone(&ctx_state_arc);
+        app.on_editor_context_menu(move |block_id, x, y| {
+            let block_opt = if block_id >= 0 { Some(block_id as usize) } else { None };
+            if let Ok(mut cs) = ctx_state_arc.lock() {
+                cs.editor_block_id = block_opt;
+            }
+            let mut items = Vec::new();
+            if block_opt.is_some() {
+                items.push(ctx_item("ed_edit", "Editar Bloco", "✏️"));
+                items.push(ctx_item("ed_copy", "Copiar Bloco", "📋"));
+                items.push(ctx_item("ed_cut", "Recortar Bloco", "✂️"));
+            } else {
+                items.push(ctx_item("ed_copy", "Copiar Nota", "📋"));
+            }
+            items.push(ctx_item("ed_paste", "Colar na Nota", "📥"));
+            items.push(ctx_sep());
+            items.push(ctx_item("ed_ins_table", "Inserir Tabela", "📊"));
+            items.push(ctx_item("ed_ins_image", "Inserir Imagem", "🖼️"));
+            items.push(ctx_item("ed_ins_task", "Inserir Lista de Tarefas", "☑️"));
+            items.push(ctx_item("ed_ins_code", "Inserir Bloco de Código", "💻"));
+            items.push(ctx_item("ed_ins_callout", "Inserir Callout", "💡"));
+            items.push(ctx_item("ed_ins_math", "Inserir Fórmula Matemática", "∑"));
+            items.push(ctx_item("ed_ins_wikilink", "Inserir Wikilink", "🔗"));
+            items.push(ctx_item("ed_ins_divider", "Inserir Divisor", "➖"));
+            if block_opt.is_some() {
+                items.push(ctx_sep());
+                items.push(ctx_danger("ed_remove_block", "Remover Bloco", "🗑️"));
+            }
+            if let Some(w) = app_weak.upgrade() {
+                w.set_context_menu_items(ModelRc::new(VecModel::from(items)));
+                w.set_context_menu_x(x);
+                w.set_context_menu_y(y);
+                w.set_context_menu_open(true);
+            }
+        });
+    }
+
+    // Botão direito no Modo Grafo
+    {
+        let app_weak = app_weak.clone();
+        app.on_graph_context_menu(move |x, y| {
+            let has_sel = app_weak
+                .upgrade()
+                .map(|w| !w.get_graph_selected_node_id().is_empty())
+                .unwrap_or(false);
+            let mut items = vec![ctx_item("gr_add_node", "Novo Nó no Grafo", "➕")];
+            if has_sel {
+                items.push(ctx_item("gr_unpin", "Desafixar Nó Selecionado", "📌"));
+                items.push(ctx_danger("gr_delete_node", "Excluir Nó Selecionado", "🗑️"));
+            }
+            items.push(ctx_sep());
+            items.push(ctx_item("gr_reheat", "Reiniciar Física", "🔄"));
+            items.push(ctx_item("gr_zoom_reset", "Resetar Zoom", "🔍"));
+            items.push(ctx_item("gr_save", "Salvar Grafo", "💾"));
+
+            if let Some(w) = app_weak.upgrade() {
+                w.set_context_menu_items(ModelRc::new(VecModel::from(items)));
+                w.set_context_menu_x(x);
+                w.set_context_menu_y(y);
+                w.set_context_menu_open(true);
+            }
+        });
+    }
+
+    // Botão direito no Modo Membrana / Canvas
+    {
+        let app_weak = app_weak.clone();
+        let canvas_arc = Arc::clone(&canvas_arc);
+        app.on_canvas_context_menu(move |x, y| {
+            let has_sel = canvas_arc
+                .lock()
+                .map(|cc| cc.selected_node_id.is_some())
+                .unwrap_or(false);
+            let mut items = vec![
+                ctx_item("cv_add_text", "Novo Card de Texto", "📝"),
+                ctx_item("cv_add_note", "Vincular Nota", "📄"),
+                ctx_item("cv_paste_card", "Colar como Card", "📥"),
+            ];
+            if has_sel {
+                items.push(ctx_sep());
+                items.push(ctx_item("cv_edit_card", "Editar Card Selecionado", "✏️"));
+                items.push(ctx_item("cv_copy_card", "Copiar Card Selecionado", "📋"));
+                items.push(ctx_danger("cv_delete_card", "Excluir Card Selecionado", "🗑️"));
+            }
+            items.push(ctx_sep());
+            items.push(ctx_item("cv_fit_all", "Enquadrar Tudo", "🔍"));
+
+            if let Some(w) = app_weak.upgrade() {
+                w.set_context_menu_items(ModelRc::new(VecModel::from(items)));
+                w.set_context_menu_x(x);
+                w.set_context_menu_y(y);
+                w.set_context_menu_open(true);
+            }
+        });
+    }
+
+    // Execução das ações selecionadas no Menu de Contexto
+    {
+        let app_weak = app_weak.clone();
+        let ctx_state_arc = Arc::clone(&ctx_state_arc);
+        let state_arc = Arc::clone(&state_arc);
+        let grimoire_arc = Arc::clone(&grimoire_arc);
+        let tab_arc = Arc::clone(&tab_arc);
+        let editor_arc = Arc::clone(&editor_arc);
+        let canvas_arc = Arc::clone(&canvas_arc);
+        let settings_arc = Arc::clone(&settings_arc);
+
+        app.on_context_menu_item_selected(move |action_id| {
+            if let Some(w) = app_weak.upgrade() {
+                w.set_context_menu_open(false);
+            }
+
+            let (sb_path, sb_is_folder, ed_block_id) = if let Ok(cs) = ctx_state_arc.lock() {
+                (cs.sidebar_path.clone(), cs.sidebar_is_folder, cs.editor_block_id)
+            } else {
+                (String::new(), false, None)
+            };
+
+            let target_folder = if sb_path.is_empty() {
+                String::new()
+            } else if sb_is_folder {
+                sb_path.clone()
+            } else {
+                sb_path
+                    .rsplit_once('/')
+                    .map(|(p, _)| p.to_string())
+                    .unwrap_or_default()
+            };
+
+            let request_delete = |target: PendingDeleteTarget, title: String, kind_label: &str| {
+                let should_confirm = settings_arc
+                    .lock()
+                    .map(|sc| sc.settings().confirm_before_delete)
+                    .unwrap_or(true);
+                if should_confirm {
+                    if let Ok(mut cs) = ctx_state_arc.lock() {
+                        cs.pending_delete = Some(target);
+                    }
+                    if let Some(w) = app_weak.upgrade() {
+                        w.set_confirm_delete_title(title.as_str().into());
+                        w.set_confirm_delete_kind_label(kind_label.into());
+                        w.set_confirm_delete_dont_ask_again(false);
+                        w.set_confirm_delete_open(true);
+                    }
+                } else {
+                    execute_delete_target(
+                        target,
+                        &app_weak,
+                        &state_arc,
+                        &grimoire_arc,
+                        &tab_arc,
+                        &editor_arc,
+                    );
+                }
+            };
+
+            match action_id.as_str() {
+                // --- Sidebar ---
+                "sb_open" => {
+                    if let Some(w) = app_weak.upgrade() {
+                        w.invoke_note_selected(sb_path.as_str().into());
+                    }
+                }
+                "sb_new_folder" => {
+                    if let Some(w) = app_weak.upgrade() {
+                        w.set_sidebar_pending_folder_parent(target_folder.as_str().into());
+                        w.set_sidebar_creating_folder(true);
+                    }
+                }
+                "sb_new_note" => {
+                    let mut base_name = "Nova Nota".to_string();
+                    let mut rel_path = if target_folder.is_empty() {
+                        format!("{base_name}.md")
+                    } else {
+                        format!("{target_folder}/{base_name}.md")
+                    };
+                    let default_content = "# Nova Nota\n\nComece a registrar suas ideias aqui...";
+                    if let Ok(st) = state_arc.lock() {
+                        let mut counter = 1;
+                        while st.entries.iter().any(|e| e.path == rel_path) {
+                            counter += 1;
+                            base_name = format!("Nova Nota {counter}");
+                            rel_path = if target_folder.is_empty() {
+                                format!("{base_name}.md")
+                            } else {
+                                format!("{target_folder}/{base_name}.md")
+                            };
+                        }
+                    }
+                    let rel_without_ext = rel_path.trim_end_matches(".md").to_string();
+                    if let Ok(gm) = grimoire_arc.lock() {
+                        if gm.active_grimoire().is_some() {
+                            let _ = gm.create_note_in_active(&rel_without_ext, default_content);
+                        }
+                    }
+                    if let Ok(mut st) = state_arc.lock() {
+                        let parent_opt = if target_folder.is_empty() {
+                            None
+                        } else {
+                            st.expanded_folders.insert(target_folder.clone());
+                            Some(target_folder.clone())
+                        };
+                        st.add_entry(gnosis_app::FileTreeEntry {
+                            id: rel_path.clone(),
+                            name: base_name.clone(),
+                            path: rel_path.clone(),
+                            is_folder: false,
+                            parent_path: parent_opt,
+                            icon: Some("📝".to_string()),
+                        });
+                        st.select_note(&rel_path, default_content);
+                        if let Some(w) = app_weak.upgrade() {
+                            let items = to_slint_tree(&st.visible_tree_items());
+                            w.set_file_tree(ModelRc::new(VecModel::from(items)));
+                            w.set_active_note_title(base_name.as_str().into());
+                            w.set_active_note_icon("📝".into());
+                            w.set_active_note_content(default_content.into());
+                        }
+                    }
+                    if let Ok(mut ed) = editor_arc.lock() {
+                        ed.set_content(default_content);
+                        if let Some(w) = app_weak.upgrade() {
+                            let ast = to_slint_ast_blocks(&ed.generate_render_blocks());
+                            w.set_ast_blocks(ModelRc::new(VecModel::from(ast)));
+                        }
+                    }
+                    if let Ok(mut tm) = tab_arc.lock() {
+                        tm.open_note_with_icon(&rel_path, &base_name, Some("📝".to_string()));
+                        if let Some(w) = app_weak.upgrade() {
+                            let tabs = to_slint_tabs(tm.active_pane());
+                            w.set_tabs(ModelRc::new(VecModel::from(tabs)));
+                        }
+                    }
+                }
+                "sb_new_membrane" => {
+                    let mut base_name = "Nova Membrana".to_string();
+                    let mut rel_path = if target_folder.is_empty() {
+                        format!("{base_name}.membrana")
+                    } else {
+                        format!("{target_folder}/{base_name}.membrana")
+                    };
+                    let default_json = r#"{"nodes":[],"edges":[]}"#;
+                    if let Ok(st) = state_arc.lock() {
+                        let mut counter = 1;
+                        while st.entries.iter().any(|e| e.path == rel_path) {
+                            counter += 1;
+                            base_name = format!("Nova Membrana {counter}");
+                            rel_path = if target_folder.is_empty() {
+                                format!("{base_name}.membrana")
+                            } else {
+                                format!("{target_folder}/{base_name}.membrana")
+                            };
+                        }
+                    }
+                    if let Ok(gm) = grimoire_arc.lock() {
+                        if gm.active_grimoire().is_some() {
+                            let _ = gm.create_membrane_in_active(&rel_path, default_json);
+                        }
+                    }
+                    if let Ok(mut st) = state_arc.lock() {
+                        let parent_opt = if target_folder.is_empty() {
+                            None
+                        } else {
+                            st.expanded_folders.insert(target_folder.clone());
+                            Some(target_folder.clone())
+                        };
+                        st.add_entry(gnosis_app::FileTreeEntry {
+                            id: rel_path.clone(),
+                            name: base_name.clone(),
+                            path: rel_path.clone(),
+                            is_folder: false,
+                            parent_path: parent_opt,
+                            icon: Some("📜".to_string()),
+                        });
+                        if let Some(w) = app_weak.upgrade() {
+                            let items = to_slint_tree(&st.visible_tree_items());
+                            w.set_file_tree(ModelRc::new(VecModel::from(items)));
+                            w.invoke_note_selected(rel_path.as_str().into());
+                        }
+                    }
+                }
+                "sb_copy_link" => {
+                    let file_name = sb_path.rsplit('/').next().unwrap_or(&sb_path);
+                    let clean = file_name
+                        .trim_end_matches(".md")
+                        .trim_end_matches(".markdown")
+                        .trim_end_matches(".membrana")
+                        .trim_end_matches(".canvas");
+                    let _ = runtime::copy_to_clipboard(&format!("[[{clean}]]"));
+                }
+                "sb_copy_path" => {
+                    let _ = runtime::copy_to_clipboard(&sb_path);
+                }
+                "sb_delete" => {
+                    if !sb_path.is_empty() {
+                        let kind_label = if sb_is_folder {
+                            "a pasta e todo o conteúdo de"
+                        } else {
+                            "o arquivo"
+                        };
+                        request_delete(
+                            PendingDeleteTarget::SidebarEntry {
+                                path: sb_path.clone(),
+                                is_folder: sb_is_folder,
+                            },
+                            sb_path,
+                            kind_label,
+                        );
+                    }
+                }
+
+                // --- Nota / Editor ---
+                "ed_edit" => {
+                    if let Some(bid) = ed_block_id {
+                        if let Some(w) = app_weak.upgrade() {
+                            w.invoke_block_clicked(bid as i32);
+                        }
+                    }
+                }
+                "ed_copy" => {
+                    if let Ok(ed) = editor_arc.lock() {
+                        let text = ed_block_id
+                            .and_then(|bid| ed.block_raw_text(bid))
+                            .unwrap_or_else(|| ed.content());
+                        let _ = runtime::copy_to_clipboard(&text);
+                    }
+                }
+                "ed_cut" => {
+                    if let Some(bid) = ed_block_id {
+                        if let Ok(mut ed) = editor_arc.lock() {
+                            if let Some(text) = ed.block_raw_text(bid) {
+                                let _ = runtime::copy_to_clipboard(&text);
+                                ed.remove_block(bid);
+                                let full = ed.content();
+                                if let Some(w) = app_weak.upgrade() {
+                                    let ast = to_slint_ast_blocks(&ed.generate_render_blocks());
+                                    w.set_ast_blocks(ModelRc::new(VecModel::from(ast)));
+                                    w.set_active_note_content(full.as_str().into());
+                                }
+                            }
+                        }
+                    }
+                }
+                "ed_paste"
+                | "ed_ins_table"
+                | "ed_ins_image"
+                | "ed_ins_task"
+                | "ed_ins_code"
+                | "ed_ins_callout"
+                | "ed_ins_math"
+                | "ed_ins_wikilink"
+                | "ed_ins_divider" => {
+                    let snippet = match action_id.as_str() {
+                        "ed_paste" => runtime::paste_from_clipboard().unwrap_or_default(),
+                        "ed_ins_table" => "| Coluna 1 | Coluna 2 |\n| --- | --- |\n| Valor 1 | Valor 2 |".to_string(),
+                        "ed_ins_image" => "![Descrição da imagem](caminho/da/imagem.png)".to_string(),
+                        "ed_ins_task" => "- [ ] Nova tarefa".to_string(),
+                        "ed_ins_code" => "```rust\nfn main() {\n    println!(\"Olá, Gnosis!\");\n}\n```".to_string(),
+                        "ed_ins_callout" => "> [!NOTE] Observação\n> Escreva aqui o destaque.".to_string(),
+                        "ed_ins_math" => "$$\nE = mc^2\n$$".to_string(),
+                        "ed_ins_wikilink" => "[[Nova Nota]]".to_string(),
+                        "ed_ins_divider" => "---".to_string(),
+                        _ => String::new(),
+                    };
+                    if !snippet.trim().is_empty() {
+                        if let Ok(mut ed) = editor_arc.lock() {
+                            ed.insert_markdown_snippet(ed_block_id, &snippet);
+                            let full = ed.content();
+                            if let Some(w) = app_weak.upgrade() {
+                                let ast = to_slint_ast_blocks(&ed.generate_render_blocks());
+                                w.set_ast_blocks(ModelRc::new(VecModel::from(ast)));
+                                w.set_active_note_content(full.as_str().into());
+                                w.invoke_note_text_edited(full.as_str().into());
+                            }
+                        }
+                    }
+                }
+                "ed_remove_block" => {
+                    if let Some(bid) = ed_block_id {
+                        if let Ok(mut ed) = editor_arc.lock() {
+                            if ed.remove_block(bid) {
+                                let full = ed.content();
+                                if let Some(w) = app_weak.upgrade() {
+                                    let ast = to_slint_ast_blocks(&ed.generate_render_blocks());
+                                    w.set_ast_blocks(ModelRc::new(VecModel::from(ast)));
+                                    w.set_active_note_content(full.as_str().into());
+                                    w.invoke_note_text_edited(full.as_str().into());
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // --- Grafo ---
+                "gr_add_node" => {
+                    if let Some(w) = app_weak.upgrade() {
+                        w.invoke_graph_add_node_requested();
+                    }
+                }
+                "gr_unpin" => {
+                    if let Some(w) = app_weak.upgrade() {
+                        let node_id = w.get_graph_selected_node_id();
+                        if !node_id.is_empty() {
+                            w.invoke_graph_unpin_node_requested(node_id);
+                        }
+                    }
+                }
+                "gr_delete_node" => {
+                    if let Some(w) = app_weak.upgrade() {
+                        let node_id = w.get_graph_selected_node_id().to_string();
+                        if !node_id.is_empty() {
+                            request_delete(
+                                PendingDeleteTarget::GraphNode(node_id.clone()),
+                                node_id,
+                                "o nó do grafo",
+                            );
+                        }
+                    }
+                }
+                "gr_reheat" => {
+                    if let Some(w) = app_weak.upgrade() {
+                        w.invoke_graph_restart_physics();
+                    }
+                }
+                "gr_zoom_reset" => {
+                    if let Some(w) = app_weak.upgrade() {
+                        w.invoke_graph_zoom_reset();
+                    }
+                }
+                "gr_save" => {
+                    if let Some(w) = app_weak.upgrade() {
+                        w.invoke_graph_save_grafo_requested();
+                    }
+                }
+
+                // --- Membrana / Canvas ---
+                "cv_add_text" => {
+                    if let Some(w) = app_weak.upgrade() {
+                        w.invoke_canvas_add_text_requested();
+                    }
+                }
+                "cv_add_note" => {
+                    if let Some(w) = app_weak.upgrade() {
+                        w.invoke_canvas_add_note_requested();
+                    }
+                }
+                "cv_paste_card" => {
+                    if let Ok(pasted) = runtime::paste_from_clipboard() {
+                        if !pasted.trim().is_empty() {
+                            if let Ok(mut cc) = canvas_arc.lock() {
+                                let node_id = cc.add_text_card(&pasted);
+                                let _ = cc.save_to_disk();
+                                if let Some(w) = app_weak.upgrade() {
+                                    let (nodes, edges) = cc.to_visual_models();
+                                    w.set_canvas_nodes(ModelRc::new(VecModel::from(to_slint_canvas_nodes(&nodes))));
+                                    w.set_canvas_edges(ModelRc::new(VecModel::from(to_slint_canvas_edges(&edges))));
+                                    w.set_canvas_node_count(cc.canvas_data.node_count() as i32);
+                                    w.set_canvas_selected_node_id(node_id.as_str().into());
+                                }
+                            }
+                        }
+                    }
+                }
+                "cv_edit_card" => {
+                    let sel = canvas_arc.lock().ok().and_then(|cc| cc.selected_node_id.clone());
+                    if let (Some(node_id), Some(w)) = (sel, app_weak.upgrade()) {
+                        w.invoke_canvas_node_edit_started(node_id.as_str().into());
+                    }
+                }
+                "cv_copy_card" => {
+                    if let Ok(cc) = canvas_arc.lock() {
+                        if let Some(sel) = &cc.selected_node_id {
+                            let (nodes, _) = cc.to_visual_models();
+                            if let Some(node) = nodes.iter().find(|n| &n.id == sel) {
+                                let _ = runtime::copy_to_clipboard(&node.content);
+                            }
+                        }
+                    }
+                }
+                "cv_delete_card" => {
+                    let sel = canvas_arc.lock().ok().and_then(|cc| cc.selected_node_id.clone());
+                    if let Some(node_id) = sel {
+                        request_delete(
+                            PendingDeleteTarget::CanvasSelected,
+                            node_id,
+                            "o card da membrana",
+                        );
+                    }
+                }
+                "cv_fit_all" => {
+                    if let Some(w) = app_weak.upgrade() {
+                        w.invoke_canvas_fit_all();
+                    }
+                }
+                _ => {}
+            }
+        });
+    }
+
+    // Cancelar modal de confirmação de exclusão
+    {
+        let app_weak = app_weak.clone();
+        let ctx_state_arc = Arc::clone(&ctx_state_arc);
+        app.on_confirm_delete_cancelled(move || {
+            if let Ok(mut cs) = ctx_state_arc.lock() {
+                cs.pending_delete = None;
+            }
+            if let Some(w) = app_weak.upgrade() {
+                w.set_confirm_delete_open(false);
+            }
+        });
+    }
+
+    // Confirmar modal de confirmação de exclusão
+    {
+        let app_weak = app_weak.clone();
+        let ctx_state_arc = Arc::clone(&ctx_state_arc);
+        let state_arc = Arc::clone(&state_arc);
+        let grimoire_arc = Arc::clone(&grimoire_arc);
+        let tab_arc = Arc::clone(&tab_arc);
+        let editor_arc = Arc::clone(&editor_arc);
+        let settings_arc = Arc::clone(&settings_arc);
+
+        app.on_confirm_delete_accepted(move || {
+            let dont_ask = app_weak
+                .upgrade()
+                .map(|w| {
+                    let val = w.get_confirm_delete_dont_ask_again();
+                    w.set_confirm_delete_open(false);
+                    val
+                })
+                .unwrap_or(false);
+
+            if dont_ask {
+                if let Ok(mut sc) = settings_arc.lock() {
+                    sc.settings_mut().confirm_before_delete = false;
+                }
+                let _ = runtime::save_confirm_before_delete(false);
+                if let Some(w) = app_weak.upgrade() {
+                    w.set_settings_confirm_before_delete(false);
+                }
+            }
+
+            let target_opt = ctx_state_arc
+                .lock()
+                .ok()
+                .and_then(|mut cs| cs.pending_delete.take());
+
+            if let Some(target) = target_opt {
+                execute_delete_target(
+                    target,
+                    &app_weak,
+                    &state_arc,
+                    &grimoire_arc,
+                    &tab_arc,
+                    &editor_arc,
+                );
             }
         });
     }

@@ -25,11 +25,21 @@ export component RichViewer inherits Rectangle {
     callback block_navigate_up(int, string);
     callback block_navigate_down(int, string);
     callback add_block_at_end_requested();
+    callback block_context_menu(int, length, length);
 
     background: Theme.background;
 
     Flickable {
         vertical-stretch: 1;
+
+        // Botão direito na área vazia da nota
+        TouchArea {
+            pointer-event(event) => {
+                if (event.button == PointerEventButton.right && event.kind == PointerEventKind.down) {
+                    root.block_context_menu(-1, self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y);
+                }
+            }
+        }
 
         VerticalLayout {
             padding: 16px;
@@ -231,6 +241,11 @@ export component RichViewer inherits Rectangle {
                 // H1 em repouso
                 if (!block.is_editing && block.kind == "h1"): touch_h1 := TouchArea {
                     mouse-cursor: pointer;
+                    pointer-event(event) => {
+                        if (event.button == PointerEventButton.right && event.kind == PointerEventKind.down) {
+                            root.block_context_menu(block.id, self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y);
+                        }
+                    }
                     clicked => { root.block_clicked(block.id); }
 
                     Rectangle {
@@ -258,6 +273,11 @@ export component RichViewer inherits Rectangle {
                 // H2 em repouso
                 if (!block.is_editing && block.kind == "h2"): touch_h2 := TouchArea {
                     mouse-cursor: pointer;
+                    pointer-event(event) => {
+                        if (event.button == PointerEventButton.right && event.kind == PointerEventKind.down) {
+                            root.block_context_menu(block.id, self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y);
+                        }
+                    }
                     clicked => { root.block_clicked(block.id); }
 
                     Rectangle {
@@ -280,6 +300,11 @@ export component RichViewer inherits Rectangle {
                 // H3 em repouso
                 if (!block.is_editing && block.kind == "h3"): touch_h3 := TouchArea {
                     mouse-cursor: pointer;
+                    pointer-event(event) => {
+                        if (event.button == PointerEventButton.right && event.kind == PointerEventKind.down) {
+                            root.block_context_menu(block.id, self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y);
+                        }
+                    }
                     clicked => { root.block_clicked(block.id); }
 
                     Rectangle {
@@ -302,6 +327,11 @@ export component RichViewer inherits Rectangle {
                 // H4, H5, H6 em repouso
                 if (!block.is_editing && (block.kind == "h4" || block.kind == "h5" || block.kind == "h6")): touch_hx := TouchArea {
                     mouse-cursor: pointer;
+                    pointer-event(event) => {
+                        if (event.button == PointerEventButton.right && event.kind == PointerEventKind.down) {
+                            root.block_context_menu(block.id, self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y);
+                        }
+                    }
                     clicked => { root.block_clicked(block.id); }
 
                     Rectangle {
@@ -324,6 +354,11 @@ export component RichViewer inherits Rectangle {
                 // Parágrafo Normal em repouso
                 if (!block.is_editing && block.kind == "paragraph"): touch_p := TouchArea {
                     mouse-cursor: pointer;
+                    pointer-event(event) => {
+                        if (event.button == PointerEventButton.right && event.kind == PointerEventKind.down) {
+                            root.block_context_menu(block.id, self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y);
+                        }
+                    }
                     clicked => { root.block_clicked(block.id); }
 
                     Rectangle {
@@ -345,6 +380,11 @@ export component RichViewer inherits Rectangle {
                 // Bloco de Código Estilizado em repouso
                 if (!block.is_editing && block.kind == "code"): touch_code := TouchArea {
                     mouse-cursor: pointer;
+                    pointer-event(event) => {
+                        if (event.button == PointerEventButton.right && event.kind == PointerEventKind.down) {
+                            root.block_context_menu(block.id, self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y);
+                        }
+                    }
                     clicked => { root.block_clicked(block.id); }
 
                     Rectangle {
@@ -385,6 +425,11 @@ export component RichViewer inherits Rectangle {
                 // Callout do Obsidian ([!NOTE], [!TIP], etc.) em repouso
                 if (!block.is_editing && block.kind == "callout"): touch_callout := TouchArea {
                     mouse-cursor: pointer;
+                    pointer-event(event) => {
+                        if (event.button == PointerEventButton.right && event.kind == PointerEventKind.down) {
+                            root.block_context_menu(block.id, self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y);
+                        }
+                    }
                     clicked => { root.block_clicked(block.id); }
 
                     Rectangle {
@@ -471,6 +516,11 @@ export component RichViewer inherits Rectangle {
                         touch_task_txt := TouchArea {
                             horizontal-stretch: 1;
                             mouse-cursor: pointer;
+                            pointer-event(event) => {
+                                if (event.button == PointerEventButton.right && event.kind == PointerEventKind.down) {
+                                    root.block_context_menu(block.id, self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y);
+                                }
+                            }
                             clicked => { root.block_clicked(block.id); }
 
                             Rectangle {
@@ -496,6 +546,11 @@ export component RichViewer inherits Rectangle {
                 // Citação (Blockquote) em repouso
                 if (!block.is_editing && block.kind == "quote"): touch_quote := TouchArea {
                     mouse-cursor: pointer;
+                    pointer-event(event) => {
+                        if (event.button == PointerEventButton.right && event.kind == PointerEventKind.down) {
+                            root.block_context_menu(block.id, self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y);
+                        }
+                    }
                     clicked => { root.block_clicked(block.id); }
 
                     Rectangle {
@@ -528,6 +583,11 @@ export component RichViewer inherits Rectangle {
                 // Tabela Markdown em repouso
                 if (!block.is_editing && block.kind == "table"): touch_tbl := TouchArea {
                     mouse-cursor: pointer;
+                    pointer-event(event) => {
+                        if (event.button == PointerEventButton.right && event.kind == PointerEventKind.down) {
+                            root.block_context_menu(block.id, self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y);
+                        }
+                    }
                     clicked => { root.block_clicked(block.id); }
 
                     Rectangle {

@@ -64,9 +64,25 @@ impl RenderBackendMode {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Default)]
+fn default_confirm_before_delete() -> bool {
+    true
+}
+
+#[derive(Debug, Serialize, Deserialize)]
 struct RuntimePreferences {
+    #[serde(default)]
     renderer_mode: RenderBackendMode,
+    #[serde(default = "default_confirm_before_delete")]
+    confirm_before_delete: bool,
+}
+
+impl Default for RuntimePreferences {
+    fn default() -> Self {
+        Self {
+            renderer_mode: RenderBackendMode::Auto,
+            confirm_before_delete: true,
+        }
+    }
 }
 
 /// Retorna o diretório de configuração/dados locais do Gnosis.
@@ -99,28 +115,63 @@ pub fn log_file_path() -> PathBuf {
     app_data_dir().join("gnosis.log")
 }
 
-/// Carrega a preferência de renderizador salva localmente (padrão: `Auto`).
-pub fn load_renderer_preference() -> RenderBackendMode {
+fn load_preferences() -> RuntimePreferences {
     let path = preferences_file_path();
     let Ok(raw) = std::fs::read_to_string(&path) else {
-        return RenderBackendMode::Auto;
+        return RuntimePreferences::default();
     };
-    serde_json::from_str::<RuntimePreferences>(&raw)
-        .map(|prefs| prefs.renderer_mode)
-        .unwrap_or_default()
+    serde_json::from_str::<RuntimePreferences>(&raw).unwrap_or_default()
 }
 
-/// Salva a preferência de renderizador localmente.
-pub fn save_renderer_preference(mode: RenderBackendMode) -> Result<(), String> {
+fn save_preferences(prefs: &RuntimePreferences) -> Result<(), String> {
     let dir = app_data_dir();
     std::fs::create_dir_all(&dir).map_err(|e| format!("Falha ao criar diretório de config: {e}"))?;
-    let prefs = RuntimePreferences {
-        renderer_mode: mode,
-    };
-    let json = serde_json::to_string_pretty(&prefs)
+    let json = serde_json::to_string_pretty(prefs)
         .map_err(|e| format!("Falha ao serializar preferência: {e}"))?;
     std::fs::write(preferences_file_path(), json)
         .map_err(|e| format!("Falha ao gravar preferência: {e}"))
+}
+
+/// Carrega a preferência de renderizador salva localmente (padrão: `Auto`).
+pub fn load_renderer_preference() -> RenderBackendMode {
+    load_preferences().renderer_mode
+}
+
+/// Salva a preferência de renderizador localmente preservando demais preferências.
+pub fn save_renderer_preference(mode: RenderBackendMode) -> Result<(), String> {
+    let mut prefs = load_preferences();
+    prefs.renderer_mode = mode;
+    save_preferences(&prefs)
+}
+
+/// Carrega se deve pedir confirmação antes de excluir arquivos ou pastas (padrão: `true`).
+pub fn load_confirm_before_delete() -> bool {
+    load_preferences().confirm_before_delete
+}
+
+/// Salva a preferência de confirmação antes de excluir arquivos ou pastas.
+pub fn save_confirm_before_delete(confirm: bool) -> Result<(), String> {
+    let mut prefs = load_preferences();
+    prefs.confirm_before_delete = confirm;
+    save_preferences(&prefs)
+}
+
+/// Copia texto para a área de transferência do sistema operacional.
+pub fn copy_to_clipboard(text: &str) -> Result<(), String> {
+    let mut clipboard =
+        arboard::Clipboard::new().map_err(|e| format!("Falha ao acessar área de transferência: {e}"))?;
+    clipboard
+        .set_text(text.to_string())
+        .map_err(|e| format!("Falha ao copiar texto: {e}"))
+}
+
+/// Lê texto da área de transferência do sistema operacional.
+pub fn paste_from_clipboard() -> Result<String, String> {
+    let mut clipboard =
+        arboard::Clipboard::new().map_err(|e| format!("Falha ao acessar área de transferência: {e}"))?;
+    clipboard
+        .get_text()
+        .map_err(|e| format!("Falha ao colar texto: {e}"))
 }
 
 /// Inicializa o sistema de logs escrevendo em arquivo local (`gnosis.log`) e stderr.

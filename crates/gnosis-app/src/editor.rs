@@ -296,6 +296,51 @@ impl EditorController {
         self.buffer = NoteBuffer::from_str(new_text);
     }
 
+    /// Retorna o texto Markdown bruto de um bloco específico para copiar/recortar.
+    pub fn block_raw_text(&self, block_id: usize) -> Option<String> {
+        self.generate_render_blocks()
+            .into_iter()
+            .find(|b| b.id == block_id)
+            .map(|b| b.raw_text)
+    }
+
+    /// Insere um trecho Markdown após o bloco especificado (ou no final da nota).
+    pub fn insert_markdown_snippet(&mut self, after_block_id: Option<usize>, snippet: &str) {
+        let clean_snippet = snippet.trim();
+        if clean_snippet.is_empty() {
+            return;
+        }
+
+        let blocks = self.generate_render_blocks();
+        let insert_pos = after_block_id
+            .and_then(|id| blocks.iter().find(|b| b.id == id).map(|b| b.span_end))
+            .unwrap_or_else(|| self.buffer.char_count());
+
+        let prefix = if insert_pos == 0 { "" } else { "\n\n" };
+        let payload = format!("{prefix}{clean_snippet}");
+        let _ = self.buffer.insert(insert_pos, &payload);
+        self.active_editing_block_id = None;
+        self.editing_math_index = None;
+    }
+
+    /// Remove um bloco específico da nota no modo Live Preview.
+    pub fn remove_block(&mut self, block_id: usize) -> bool {
+        let blocks = self.generate_render_blocks();
+        let Some(idx) = blocks.iter().position(|b| b.id == block_id) else {
+            return false;
+        };
+        let target = &blocks[idx];
+        let delete_start = if idx > 0 {
+            blocks[idx - 1].span_end
+        } else {
+            target.span_start
+        };
+        let _ = self.buffer.replace_range(delete_start, target.span_end, "");
+        self.active_editing_block_id = None;
+        self.editing_math_index = None;
+        true
+    }
+
     /// Retorna o conteúdo textual completo.
     pub fn content(&self) -> String {
         self.buffer.to_string()

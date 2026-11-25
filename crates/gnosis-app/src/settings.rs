@@ -86,12 +86,19 @@ pub struct UserSettings {
     /// Preferência de motor gráfico ("auto", "gpu", "software").
     #[serde(default = "default_renderer_mode")]
     pub renderer_mode: String,
+    /// Exibir confirmação antes de excluir notas, pastas, membranas ou grafos.
+    #[serde(default = "default_confirm_before_delete")]
+    pub confirm_before_delete: bool,
     /// Versão da aplicação.
     pub version: String,
 }
 
 fn default_renderer_mode() -> String {
     "auto".to_string()
+}
+
+fn default_confirm_before_delete() -> bool {
+    true
 }
 
 impl Default for UserSettings {
@@ -106,6 +113,7 @@ impl Default for UserSettings {
             compact_mode: false,
             engine_info: "Slint FemtoVG / Software Renderer (Hardware 2015- 60FPS)".to_string(),
             renderer_mode: default_renderer_mode(),
+            confirm_before_delete: default_confirm_before_delete(),
             version: env!("CARGO_PKG_VERSION").to_string(),
         }
     }

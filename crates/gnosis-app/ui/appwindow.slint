@@ -12,6 +12,7 @@ import { StickerPickerModal, StickerItemSlint } from "sticker_picker.slint";
 import { SettingsModal } from "settings_modal.slint";
 import { GrimoireModal, GrimoireItemData } from "grimoire_modal.slint";
 import { MobileBottomBar, MobileDrawer } from "mobile_nav.slint";
+import { ContextMenu, ContextMenuItem, ConfirmDeleteModal } from "context_menu.slint";
 export { GrimoireItemData }
 
 
@@ -106,7 +107,20 @@ export component AppWindow inherits Window {
     in property <string> settings_theme_name: "Abyss";
     in property <string> settings_engine_info: "FemtoVG / Software Renderer (Hardware 2015- 60FPS)";
     in-out property <string> settings_renderer_mode: "Automático (GPU → CPU)";
+    in-out property <bool> settings_confirm_before_delete: true;
     in property <string> settings_app_version: "0.1.0";
+
+    // Propriedades do Menu de Contexto (Botão Direito) e Confirmação de Exclusão
+    in-out property <bool> context_menu_open: false;
+    in-out property <length> context_menu_x: 0px;
+    in-out property <length> context_menu_y: 0px;
+    in property <[ContextMenuItem]> context_menu_items: [];
+    in-out property <bool> confirm_delete_open: false;
+    in property <string> confirm_delete_title: "";
+    in property <string> confirm_delete_kind_label: "item";
+    in-out property <bool> confirm_delete_dont_ask_again: false;
+    in-out property <bool> sidebar_creating_folder: false;
+    in-out property <string> sidebar_pending_folder_parent: "";
 
     // Propriedades do Modal de Grimórios (Vaults)
     in-out property <bool> grimoire_modal_open: false;
@@ -239,6 +253,18 @@ export component AppWindow inherits Window {
     callback settings_default_live_preview_toggled();
     callback settings_compact_mode_toggled();
     callback settings_renderer_mode_cycled();
+    callback settings_confirm_before_delete_toggled();
+
+    // Callbacks de Menu de Contexto e Exclusão
+    callback context_menu_item_selected(string);
+    callback context_menu_close_requested();
+    callback sidebar_item_context_menu(string, bool, length, length);
+    callback sidebar_bg_context_menu(length, length);
+    callback editor_context_menu(int, length, length);
+    callback graph_context_menu(length, length);
+    callback canvas_context_menu(length, length);
+    callback confirm_delete_accepted();
+    callback confirm_delete_cancelled();
 
     // Callbacks do Modal de Grimórios (Vaults)
     callback open_grimoire_modal();
@@ -279,6 +305,8 @@ export component AppWindow inherits Window {
                 vault_title: root.vault_name;
                 items: root.file_tree;
                 is_collapsed: root.sidebar_collapsed;
+                is_creating_folder <=> root.sidebar_creating_folder;
+                pending_folder_parent <=> root.sidebar_pending_folder_parent;
 
                 note_clicked(path) => { root.note_selected(path); }
                 folder_toggled(path) => { root.folder_toggled(path); }
@@ -287,6 +315,8 @@ export component AppWindow inherits Window {
                 new_membrane_requested => { root.new_membrane_requested(); }
                 new_folder_requested(parent, name) => { root.new_folder_requested(parent, name); }
                 item_moved(src, dst) => { root.item_moved(src, dst); }
+                item_context_menu(path, is_folder, x, y) => { root.sidebar_item_context_menu(path, is_folder, x, y); }
+                sidebar_bg_context_menu(x, y) => { root.sidebar_bg_context_menu(x, y); }
                 settings_clicked => { root.open_settings(); }
                 grimoire_clicked => { root.open_grimoire_modal(); }
             }
@@ -609,6 +639,7 @@ export component AppWindow inherits Window {
                     set_node_color_requested(id, c) => { root.graph_set_node_color_requested(id, c); }
                     adjust_node_radius_requested(id, d) => { root.graph_adjust_node_radius_requested(id, d); }
                     save_grafo_requested => { root.graph_save_grafo_requested(); }
+                    graph_context_menu(x, y) => { root.graph_context_menu(x, y); }
                 }
 
                 if (root.is_canvas_view): CanvasView {
@@ -642,6 +673,7 @@ export component AppWindow inherits Window {
                     add_note_requested => { root.canvas_add_note_requested(); }
                     delete_selected_requested => { root.canvas_delete_selected_requested(); }
                     connect_cards_requested(from, to) => { root.canvas_connect_cards_requested(from, to); }
+                    canvas_context_menu(x, y) => { root.canvas_context_menu(x, y); }
                 }
 
                 if (!root.is_graph_view && !root.is_canvas_view): HorizontalLayout {
@@ -660,6 +692,14 @@ export component AppWindow inherits Window {
                             if (root.is_editing): Rectangle {
                                 vertical-stretch: 1;
                                 background: Theme.background;
+
+                                TouchArea {
+                                    pointer-event(event) => {
+                                        if (event.button == PointerEventButton.right && event.kind == PointerEventKind.down) {
+                                            root.editor_context_menu(-1, self.absolute-position.x + self.mouse-x, self.absolute-position.y + self.mouse-y);
+                                        }
+                                    }
+                                }
 
                                 Flickable {
                                     vertical-stretch: 1;
@@ -697,6 +737,7 @@ export component AppWindow inherits Window {
                                 block_navigate_up(id, text) => { root.block_navigate_up(id, text); }
                                 block_navigate_down(id, text) => { root.block_navigate_down(id, text); }
                                 add_block_at_end_requested => { root.add_block_at_end_requested(); }
+                                block_context_menu(id, x, y) => { root.editor_context_menu(id, x, y); }
                             }
                         }
                     }
@@ -836,6 +877,7 @@ export component AppWindow inherits Window {
         theme_name: root.settings_theme_name;
         engine_info: root.settings_engine_info;
         renderer_mode: root.settings_renderer_mode;
+        confirm_before_delete: root.settings_confirm_before_delete;
         app_version: root.settings_app_version;
 
         close_modal => { root.close_settings(); }
@@ -846,6 +888,7 @@ export component AppWindow inherits Window {
         default_live_preview_toggled => { root.settings_default_live_preview_toggled(); }
         compact_mode_toggled => { root.settings_compact_mode_toggled(); }
         renderer_mode_cycled => { root.settings_renderer_mode_cycled(); }
+        confirm_before_delete_toggled => { root.settings_confirm_before_delete_toggled(); }
     }
 
     // Modal Suspenso Flutuante (Grimórios / Vaults)
@@ -894,6 +937,28 @@ export component AppWindow inherits Window {
             root.close_mobile_drawer();
             root.open_grimoire_modal();
         }
+    }
+
+    // Menu de Contexto Flutuante Global (Botão Direito)
+    ContextMenu {
+        is_open: root.context_menu_open;
+        anchor_x: root.context_menu_x;
+        anchor_y: root.context_menu_y;
+        items: root.context_menu_items;
+
+        item_selected(id) => { root.context_menu_item_selected(id); }
+        close_requested => { root.context_menu_close_requested(); }
+    }
+
+    // Modal de Confirmação de Exclusão
+    ConfirmDeleteModal {
+        is_open: root.confirm_delete_open;
+        item_title: root.confirm_delete_title;
+        item_kind_label: root.confirm_delete_kind_label;
+        dont_ask_again <=> root.confirm_delete_dont_ask_again;
+
+        confirmed => { root.confirm_delete_accepted(); }
+        cancelled => { root.confirm_delete_cancelled(); }
     }
 }
 

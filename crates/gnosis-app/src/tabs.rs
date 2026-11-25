@@ -296,6 +296,23 @@ impl TabManager {
         }
     }
 
+    /// Fecha todas as abas correspondentes a um arquivo ou pasta excluída.
+    pub fn close_tabs_by_prefix(&mut self, path: &str, is_folder: bool) {
+        let prefix = format!("{path}/");
+        for pane in &mut self.panes {
+            let mut idx = 0;
+            while idx < pane.tabs.len() {
+                let matches = pane.tabs[idx].path == path
+                    || (is_folder && pane.tabs[idx].path.starts_with(&prefix));
+                if matches {
+                    pane.close_tab(idx);
+                } else {
+                    idx += 1;
+                }
+            }
+        }
+    }
+
     /// Alterna ou define a divisão de tela entre painéis.
     pub fn set_split(&mut self, direction: SplitDirection) {
         self.split_direction = direction;
