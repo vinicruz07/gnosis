@@ -3159,18 +3159,43 @@ fn main() {
                     }
                 }
                 "ed_cut" => {
-                    if let Some(bid) = ed_block_id {
+                    let cut_snapshot = if let Some(bid) = ed_block_id {
                         if let Ok(mut ed) = editor_arc.lock() {
                             if let Some(text) = ed.block_raw_text(bid) {
                                 let _ = runtime::copy_to_clipboard(&text);
                                 ed.remove_block(bid);
-                                let full = ed.content();
-                                if let Some(w) = app_weak.upgrade() {
-                                    let ast = to_slint_ast_blocks(&ed.generate_render_blocks());
-                                    w.set_ast_blocks(ModelRc::new(VecModel::from(ast)));
-                                    w.set_active_note_content(full.as_str().into());
-                                }
+                                Some((
+                                    ed.content(),
+                                    to_slint_ast_blocks(&ed.generate_render_blocks()),
+                                    ed.word_count(),
+                                    ed.char_count(),
+                                ))
+                            } else {
+                                None
                             }
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    };
+                    if let Some((full, ast, words, chars)) = cut_snapshot {
+                        if let Ok(mut st) = state_arc.lock() {
+                            st.active_note_content = full.clone();
+                        }
+                        if let Ok(mut tm) = tab_arc.lock() {
+                            if let Some(tab) = tm.active_pane_mut().active_tab_mut() {
+                                tab.is_modified = true;
+                            }
+                            if let Some(w) = app_weak.upgrade() {
+                                w.set_tabs(ModelRc::new(VecModel::from(to_slint_tabs(tm.active_pane()))));
+                            }
+                        }
+                        if let Some(w) = app_weak.upgrade() {
+                            w.set_ast_blocks(ModelRc::new(VecModel::from(ast)));
+                            w.set_active_note_content(full.as_str().into());
+                            w.set_word_count(words as i32);
+                            w.set_char_count(chars as i32);
                         }
                     }
                 }
@@ -3182,7 +3207,9 @@ fn main() {
                 | "ed_ins_callout"
                 | "ed_ins_math"
                 | "ed_ins_wikilink"
-                | "ed_ins_divider" => {
+                | "ed_ins_divider"
+                | "ed_remove_block" => {
+                    let is_remove = action_id.as_str() == "ed_remove_block";
                     let snippet = match action_id.as_str() {
                         "ed_paste" => runtime::paste_from_clipboard().unwrap_or_default(),
                         "ed_ins_table" => "| Coluna 1 | Coluna 2 |\n| --- | --- |\n| Valor 1 | Valor 2 |".to_string(),
@@ -3195,31 +3222,52 @@ fn main() {
                         "ed_ins_divider" => "---".to_string(),
                         _ => String::new(),
                     };
-                    if !snippet.trim().is_empty() {
-                        if let Ok(mut ed) = editor_arc.lock() {
+                    let snapshot = if is_remove {
+                        ed_block_id.and_then(|bid| {
+                            editor_arc.lock().ok().and_then(|mut ed| {
+                                if ed.remove_block(bid) {
+                                    Some((
+                                        ed.content(),
+                                        to_slint_ast_blocks(&ed.generate_render_blocks()),
+                                        ed.word_count(),
+                                        ed.char_count(),
+                                    ))
+                                } else {
+                                    None
+                                }
+                            })
+                        })
+                    } else if !snippet.trim().is_empty() {
+                        editor_arc.lock().ok().map(|mut ed| {
                             ed.insert_markdown_snippet(ed_block_id, &snippet);
-                            let full = ed.content();
+                            (
+                                ed.content(),
+                                to_slint_ast_blocks(&ed.generate_render_blocks()),
+                                ed.word_count(),
+                                ed.char_count(),
+                            )
+                        })
+                    } else {
+                        None
+                    };
+
+                    if let Some((full, ast, words, chars)) = snapshot {
+                        if let Ok(mut st) = state_arc.lock() {
+                            st.active_note_content = full.clone();
+                        }
+                        if let Ok(mut tm) = tab_arc.lock() {
+                            if let Some(tab) = tm.active_pane_mut().active_tab_mut() {
+                                tab.is_modified = true;
+                            }
                             if let Some(w) = app_weak.upgrade() {
-                                let ast = to_slint_ast_blocks(&ed.generate_render_blocks());
-                                w.set_ast_blocks(ModelRc::new(VecModel::from(ast)));
-                                w.set_active_note_content(full.as_str().into());
-                                w.invoke_note_text_edited(full.as_str().into());
+                                w.set_tabs(ModelRc::new(VecModel::from(to_slint_tabs(tm.active_pane()))));
                             }
                         }
-                    }
-                }
-                "ed_remove_block" => {
-                    if let Some(bid) = ed_block_id {
-                        if let Ok(mut ed) = editor_arc.lock() {
-                            if ed.remove_block(bid) {
-                                let full = ed.content();
-                                if let Some(w) = app_weak.upgrade() {
-                                    let ast = to_slint_ast_blocks(&ed.generate_render_blocks());
-                                    w.set_ast_blocks(ModelRc::new(VecModel::from(ast)));
-                                    w.set_active_note_content(full.as_str().into());
-                                    w.invoke_note_text_edited(full.as_str().into());
-                                }
-                            }
+                        if let Some(w) = app_weak.upgrade() {
+                            w.set_ast_blocks(ModelRc::new(VecModel::from(ast)));
+                            w.set_active_note_content(full.as_str().into());
+                            w.set_word_count(words as i32);
+                            w.set_char_count(chars as i32);
                         }
                     }
                 }
