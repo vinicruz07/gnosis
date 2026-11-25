@@ -83,8 +83,15 @@ pub struct UserSettings {
     pub compact_mode: bool,
     /// Informações do motor de renderização.
     pub engine_info: String,
+    /// Preferência de motor gráfico ("auto", "gpu", "software").
+    #[serde(default = "default_renderer_mode")]
+    pub renderer_mode: String,
     /// Versão da aplicação.
     pub version: String,
+}
+
+fn default_renderer_mode() -> String {
+    "auto".to_string()
 }
 
 impl Default for UserSettings {
@@ -98,6 +105,7 @@ impl Default for UserSettings {
             theme_id: "dark".to_string(),
             compact_mode: false,
             engine_info: "Slint FemtoVG / Software Renderer (Hardware 2015- 60FPS)".to_string(),
+            renderer_mode: default_renderer_mode(),
             version: env!("CARGO_PKG_VERSION").to_string(),
         }
     }

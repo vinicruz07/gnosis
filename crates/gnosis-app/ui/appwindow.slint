@@ -105,6 +105,7 @@ export component AppWindow inherits Window {
     in-out property <bool> settings_compact_mode: false;
     in property <string> settings_theme_name: "Abyss";
     in property <string> settings_engine_info: "FemtoVG / Software Renderer (Hardware 2015- 60FPS)";
+    in-out property <string> settings_renderer_mode: "Automático (GPU → CPU)";
     in property <string> settings_app_version: "0.1.0";
 
     // Propriedades do Modal de Grimórios (Vaults)
@@ -235,6 +236,7 @@ export component AppWindow inherits Window {
     callback settings_line_wrapping_toggled();
     callback settings_default_live_preview_toggled();
     callback settings_compact_mode_toggled();
+    callback settings_renderer_mode_cycled();
 
     // Callbacks do Modal de Grimórios (Vaults)
     callback open_grimoire_modal();
@@ -829,6 +831,7 @@ export component AppWindow inherits Window {
         compact_mode: root.settings_compact_mode;
         theme_name: root.settings_theme_name;
         engine_info: root.settings_engine_info;
+        renderer_mode: root.settings_renderer_mode;
         app_version: root.settings_app_version;
 
         close_modal => { root.close_settings(); }
@@ -838,6 +841,7 @@ export component AppWindow inherits Window {
         line_wrapping_toggled => { root.settings_line_wrapping_toggled(); }
         default_live_preview_toggled => { root.settings_default_live_preview_toggled(); }
         compact_mode_toggled => { root.settings_compact_mode_toggled(); }
+        renderer_mode_cycled => { root.settings_renderer_mode_cycled(); }
     }
 
     // Modal Suspenso Flutuante (Grimórios / Vaults)

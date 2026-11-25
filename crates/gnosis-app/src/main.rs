@@ -3,10 +3,13 @@
 //! Inicialização do Slint UI com renderizador leve, abas, split view,
 //! Quick Switcher, editor ágil, Grafo 2D e sistema dinâmico de temas místico via TOML.
 
+#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 #![deny(unsafe_code)]
 #![deny(clippy::unwrap_used)]
 #![deny(clippy::expect_used)]
 #![deny(clippy::panic)]
+
+use gnosis_app::runtime::{self, RenderBackendMode};
 
 use gnosis_app::{
     AppState, AppWindow, CanvasEdgeSlint, CanvasEdgeVisual, CanvasNodeSlint, CanvasNodeVisual,
@@ -236,11 +239,15 @@ fn to_slint_grimoires(
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    tracing_subscriber::fmt::init();
-    info!("Inicializando Gnosis - Temas Místicos via TOML (Abyss, Aether, Arcana, Boreas)");
+    runtime::init_logging();
+    let (active_renderer_mode, active_engine_desc) = runtime::configure_renderer_env();
+    info!(
+        "Inicializando Gnosis - Temas Místicos via TOML (Abyss, Aether, Arcana, Boreas) | Motor: {}",
+        active_engine_desc
+    );
 
-    // Instancia janela principal Slint
-    let app = AppWindow::new()?;
+    // Instancia janela principal Slint com fallback automático para Software caso falhe
+    let app = runtime::run_or_fallback_to_software(AppWindow::new)?;
 
     // Inicializa gerenciador de temas com estética mística
     let theme_mgr = ThemeManager::new();
@@ -401,7 +408,9 @@ fn main() {
     app.set_canvas_nodes(ModelRc::new(VecModel::from(to_slint_canvas_nodes(&initial_c_nodes))));
     app.set_canvas_edges(ModelRc::new(VecModel::from(to_slint_canvas_edges(&initial_c_edges))));
 
-    let settings_ctrl = SettingsController::new();
+    let mut settings_ctrl = SettingsController::new();
+    settings_ctrl.settings_mut().engine_info = active_engine_desc.to_string();
+    settings_ctrl.settings_mut().renderer_mode = active_renderer_mode.as_str().to_string();
     let s = settings_ctrl.settings();
     app.set_settings_open(settings_ctrl.is_open());
     app.set_settings_active_tab(settings_ctrl.active_tab_index());
@@ -412,6 +421,7 @@ fn main() {
     app.set_settings_compact_mode(s.compact_mode);
     app.set_settings_theme_name("Abyss".into());
     app.set_settings_engine_info(s.engine_info.as_str().into());
+    app.set_settings_renderer_mode(active_renderer_mode.display_label().into());
     app.set_settings_app_version(s.version.as_str().into());
 
     let initial_grimoires = to_slint_grimoires(
@@ -2487,6 +2497,24 @@ fn main() {
         });
     }
 
+    // 9. Alternar Motor Gráfico (Auto -> Software -> GPU)
+    {
+        let app_weak = app_weak.clone();
+        let settings_arc = Arc::clone(&settings_arc);
+        app.on_settings_renderer_mode_cycled(move || {
+            if let Ok(mut sc) = settings_arc.lock() {
+                let current = RenderBackendMode::from_str_lossy(&sc.settings().renderer_mode);
+                let next = current.cycle_next();
+                sc.settings_mut().renderer_mode = next.as_str().to_string();
+                let _ = runtime::save_renderer_preference(next);
+                info!("Preferência de motor gráfico alterada para: {}", next.display_label());
+                if let Some(w) = app_weak.upgrade() {
+                    w.set_settings_renderer_mode(next.display_label().into());
+                }
+            }
+        });
+    }
+
     // Callback: Botão Nova Nota (+) ao lado do título do Grimório
     {
         let app_weak = app_weak.clone();
@@ -3075,7 +3103,7 @@ fn main() {
         return Ok(());
     }
 
-    app.run()?;
+    runtime::run_or_fallback_to_software(|| app.run())?;
 
     Ok(())
 }

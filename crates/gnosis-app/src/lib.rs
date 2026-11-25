@@ -16,6 +16,7 @@ pub mod fuzzy;
 pub mod graph_view;
 pub mod grimoire;
 pub mod quick_switcher;
+pub mod runtime;
 pub mod settings;
 pub mod state;
 pub mod sticker_picker;

@@ -12,6 +12,7 @@ export component SettingsModal inherits Rectangle {
     in-out property <bool> compact_mode: false;
     in property <string> theme_name: "Abyss";
     in property <string> engine_info: "FemtoVG / Software Renderer (Hardware 2015- 60FPS)";
+    in-out property <string> renderer_mode: "Automático (GPU → CPU)";
     in property <string> app_version: "0.1.0";
 
     // Callbacks de interação
@@ -22,6 +23,7 @@ export component SettingsModal inherits Rectangle {
     callback line_wrapping_toggled();
     callback default_live_preview_toggled();
     callback compact_mode_toggled();
+    callback renderer_mode_cycled();
 
     background: #000000bb;
     width: 100%;
@@ -364,6 +366,59 @@ export component SettingsModal inherits Rectangle {
                                     color: Theme.text_secondary;
                                     font-size: 12px;
                                     vertical-alignment: center;
+                                }
+                            }
+                        }
+
+                        Rectangle {
+                            background: Theme.background;
+                            border-radius: 8px;
+                            border-width: 1px;
+                            border-color: Theme.border;
+                            height: 68px;
+
+                            HorizontalLayout {
+                                padding-left: 16px;
+                                padding-right: 16px;
+                                alignment: space-between;
+
+                                VerticalLayout {
+                                    alignment: center;
+                                    spacing: 4px;
+                                    Text {
+                                        text: "Motor Gráfico (Renderizador)";
+                                        color: Theme.text_primary;
+                                        font-size: 13px;
+                                        font-weight: 600;
+                                    }
+                                    Text {
+                                        text: "Use Software em PCs legados ou VMs. Reinicie para aplicar.";
+                                        color: Theme.text_muted;
+                                        font-size: 11px;
+                                    }
+                                }
+
+                                Rectangle {
+                                    min-width: 170px;
+                                    height: 32px;
+                                    border-radius: 6px;
+                                    border-width: 1px;
+                                    border-color: Theme.border;
+                                    background: renderer_btn_area.has-hover ? Theme.surface_hover : Theme.surface;
+
+                                    renderer_btn_area := TouchArea {
+                                        mouse-cursor: pointer;
+                                        clicked => { root.renderer_mode_cycled(); }
+                                    }
+
+                                    Text {
+                                        text: root.renderer_mode;
+                                        color: Theme.accent;
+                                        font-size: 11px;
+                                        font-weight: 600;
+                                        horizontal-alignment: center;
+                                        vertical-alignment: center;
+                                    }
                                 }
                             }
                         }
