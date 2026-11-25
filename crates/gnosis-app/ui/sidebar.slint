@@ -21,8 +21,40 @@ export component Sidebar inherits Rectangle {
     callback toggle_sidebar();
     callback new_note_requested();
     callback new_membrane_requested();
+    callback new_folder_requested(string, string);
+    callback item_moved(string, string);
     callback settings_clicked();
     callback grimoire_clicked();
+
+    // Estado interno para criação de pastas/subpastas
+    private property <bool> is_creating_folder: false;
+    private property <string> pending_folder_parent: "";
+    private property <string> pending_folder_name: "";
+
+    // Estado interno para Drag & Drop de arquivos/pastas
+    private property <string> drag_source_path: "";
+    private property <string> drag_source_name: "";
+    private property <bool> drag_active: false;
+    private property <bool> suppress_next_click: false;
+    private property <length> drag_start_y: 0px;
+    private property <length> drag_current_y: 0px;
+    private property <string> drop_target_folder: "";
+
+    function open_folder_creator(parent_path: string) {
+        root.pending_folder_parent = parent_path;
+        root.pending_folder_name = "";
+        root.is_creating_folder = true;
+        folder_name_input.focus();
+    }
+
+    function submit_folder_creator() {
+        if (root.pending_folder_name != "") {
+            root.new_folder_requested(root.pending_folder_parent, root.pending_folder_name);
+        }
+        root.is_creating_folder = false;
+        root.pending_folder_name = "";
+        root.pending_folder_parent = "";
+    }
 
     background: Theme.sidebar_bg;
     width: root.is_collapsed ? 0px : 240px;
@@ -109,6 +141,26 @@ export component Sidebar inherits Rectangle {
                     }
                 }
 
+                // Botão Nova Pasta (na raiz)
+                Rectangle {
+                    width: 24px;
+                    height: 24px;
+                    border-radius: 4px;
+                    background: touch_new_folder.has-hover ? Theme.surface_hover : transparent;
+
+                    Text {
+                        text: "📁";
+                        font-size: 11px;
+                        vertical-alignment: center;
+                        horizontal-alignment: center;
+                    }
+
+                    touch_new_folder := TouchArea {
+                        mouse-cursor: pointer;
+                        clicked => { root.open_folder_creator(""); }
+                    }
+                }
+
                 // Botão Nova Nota (ao lado do nome do Grimório)
                 Rectangle {
                     width: 24px;
@@ -158,49 +210,240 @@ export component Sidebar inherits Rectangle {
             background: Theme.border;
         }
 
+        // Barra inline para criação de Pasta / Subpasta
+        Rectangle {
+            visible: root.is_creating_folder;
+            height: root.is_creating_folder ? 58px : 0px;
+            clip: true;
+            background: Theme.surface;
+            border-radius: 6px;
+            border-width: root.is_creating_folder ? 1px : 0px;
+            border-color: Theme.accent;
+
+            VerticalLayout {
+                padding: 6px;
+                spacing: 4px;
+
+                Text {
+                    text: root.pending_folder_parent == "" ? "Nova pasta na raiz:" : "Subpasta em: " + root.pending_folder_parent;
+                    color: Theme.text_muted;
+                    font-size: 10px;
+                    overflow: elide;
+                }
+
+                HorizontalLayout {
+                    spacing: 4px;
+
+                    Rectangle {
+                        horizontal-stretch: 1;
+                        height: 24px;
+                        border-radius: 4px;
+                        background: Theme.background;
+                        border-width: 1px;
+                        border-color: Theme.border;
+
+                        folder_name_input := TextInput {
+                            x: 6px;
+                            width: parent.width - 12px;
+                            height: parent.height;
+                            text <=> root.pending_folder_name;
+                            color: Theme.text_primary;
+                            font-size: 11px;
+                            vertical-alignment: center;
+                            single-line: true;
+                            accepted => { root.submit_folder_creator(); }
+                            key-pressed(event) => {
+                                if (event.text == Key.Escape) {
+                                    root.is_creating_folder = false;
+                                    accept
+                                } else {
+                                    reject
+                                }
+                            }
+                        }
+                    }
+
+                    Rectangle {
+                        width: 22px;
+                        height: 24px;
+                        border-radius: 4px;
+                        background: confirm_folder_touch.has-hover ? Theme.accent : Theme.surface_hover;
+                        Text {
+                            text: "✓";
+                            color: Theme.text_primary;
+                            font-size: 11px;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                        confirm_folder_touch := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => { root.submit_folder_creator(); }
+                        }
+                    }
+
+                    Rectangle {
+                        width: 22px;
+                        height: 24px;
+                        border-radius: 4px;
+                        background: cancel_folder_touch.has-hover ? Theme.danger : Theme.surface_hover;
+                        Text {
+                            text: "✕";
+                            color: Theme.text_primary;
+                            font-size: 10px;
+                            horizontal-alignment: center;
+                            vertical-alignment: center;
+                        }
+                        cancel_folder_touch := TouchArea {
+                            mouse-cursor: pointer;
+                            clicked => { root.is_creating_folder = false; }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Indicador de destino raiz durante arraste
+        if (root.drag_active): Rectangle {
+            height: 24px;
+            border-radius: 4px;
+            border-width: 1px;
+            border-color: root.drop_target_folder == "" ? Theme.accent : Theme.border;
+            background: root.drop_target_folder == "" ? Theme.surface_active : Theme.surface;
+
+            Text {
+                text: root.drop_target_folder == ""
+                    ? "📥 Soltar \"" + root.drag_source_name + "\" na Raiz"
+                    : "📂 Mover \"" + root.drag_source_name + "\" → " + root.drop_target_folder;
+                color: Theme.accent;
+                font-size: 10px;
+                font-weight: 600;
+                horizontal-alignment: center;
+                vertical-alignment: center;
+                overflow: elide;
+            }
+        }
+
         // Lista de Arquivos e Pastas
-        Flickable {
+        list_flick := Flickable {
             vertical-stretch: 1;
 
             VerticalLayout {
                 spacing: 2px;
                 alignment: start;
 
-                for item in root.items: Rectangle {
+                for item[idx] in root.items: Rectangle {
                     height: 26px;
                     border-radius: 4px;
-                    background: item.is_active ? Theme.surface_active : (touch_item.has-hover ? Theme.surface_hover : transparent);
+                    border-width: (root.drag_active && item.is_folder && root.drop_target_folder == item.path) ? 1px : 0px;
+                    border-color: Theme.accent;
+                    background: (root.drag_active && item.is_folder && root.drop_target_folder == item.path)
+                        ? Theme.surface_active
+                        : (item.is_active ? Theme.surface_active : (touch_item.has-hover ? Theme.surface_hover : transparent));
+                    opacity: (root.drag_active && root.drag_source_path == item.path) ? 0.45 : 1.0;
+
+                    touch_item := TouchArea {
+                        mouse-cursor: root.drag_active ? grabbing : pointer;
+                        pointer-event(event) => {
+                            if (event.button == PointerEventButton.left && event.kind == PointerEventKind.down) {
+                                root.drag_source_path = item.path;
+                                root.drag_source_name = item.name;
+                                root.drag_start_y = self.absolute-position.y + self.mouse-y;
+                                root.drag_current_y = root.drag_start_y;
+                                root.drag_active = false;
+                                root.suppress_next_click = false;
+                                root.drop_target_folder = "";
+                            } else if (event.button == PointerEventButton.left && event.kind == PointerEventKind.up) {
+                                if (root.drag_active) {
+                                    if (root.drag_source_path != "" && root.drag_source_path != root.drop_target_folder) {
+                                        root.item_moved(root.drag_source_path, root.drop_target_folder);
+                                    }
+                                    root.drag_active = false;
+                                    root.drag_source_path = "";
+                                    root.drop_target_folder = "";
+                                }
+                            }
+                        }
+                        moved => {
+                            if (self.pressed && root.drag_source_path == item.path) {
+                                root.drag_current_y = self.absolute-position.y + self.mouse-y;
+                                if (!root.drag_active && abs(root.drag_current_y - root.drag_start_y) > 6px) {
+                                    root.drag_active = true;
+                                    root.suppress_next_click = true;
+                                }
+                                if (root.drag_active) {
+                                    if (root.drag_current_y >= list_flick.absolute-position.y
+                                        && root.drag_current_y <= list_flick.absolute-position.y + list_flick.height) {
+                                        let target_idx = Math.floor((root.drag_current_y - list_flick.absolute-position.y - list_flick.content-y) / 28px);
+                                        if (target_idx >= 0 && target_idx < root.items.length && root.items[target_idx].is_folder) {
+                                            root.drop_target_folder = root.items[target_idx].path;
+                                        } else {
+                                            root.drop_target_folder = "";
+                                        }
+                                    } else {
+                                        root.drop_target_folder = "";
+                                    }
+                                }
+                            }
+                        }
+                        clicked => {
+                            if (root.suppress_next_click) {
+                                root.suppress_next_click = false;
+                            } else if (item.is_folder) {
+                                root.folder_toggled(item.path);
+                            } else {
+                                root.note_clicked(item.path);
+                            }
+                        }
+                    }
 
                     HorizontalLayout {
                         padding-left: item.indent_level * 14px + 6px;
                         padding-right: 6px;
                         spacing: 6px;
-                        alignment: start;
+                        alignment: space-between;
 
-                        // Ícone Pasta ou Nota (com suporte a sticker/emoji)
-                        Text {
-                            text: item.is_folder ? (item.is_expanded ? "📂" : "📁") : (item.icon != "" ? item.icon : "📄");
-                            font-size: 11px;
-                            vertical-alignment: center;
+                        HorizontalLayout {
+                            spacing: 6px;
+                            alignment: start;
+                            horizontal-stretch: 1;
+
+                            // Ícone Pasta ou Nota (com suporte a sticker/emoji)
+                            Text {
+                                text: item.is_folder ? (item.is_expanded ? "📂" : "📁") : (item.icon != "" ? item.icon : "📄");
+                                font-size: 11px;
+                                vertical-alignment: center;
+                            }
+
+                            // Nome do Arquivo / Pasta
+                            Text {
+                                text: item.name;
+                                color: item.is_active ? Theme.accent : Theme.text_primary;
+                                font-size: 12px;
+                                vertical-alignment: center;
+                                overflow: elide;
+                            }
                         }
 
+                        // Botão rápido "+" para criar subpasta dentro desta pasta
+                        if (item.is_folder): Rectangle {
+                            width: 20px;
+                            height: 20px;
+                            border-radius: 4px;
+                            opacity: (touch_item.has-hover || touch_subfolder.has-hover) ? 1.0 : 0.0;
+                            background: touch_subfolder.has-hover ? Theme.surface_active : transparent;
 
-                        // Nome do Arquivo / Pasta
-                        Text {
-                            text: item.name;
-                            color: item.is_active ? Theme.accent : Theme.text_primary;
-                            font-size: 12px;
-                            vertical-alignment: center;
-                            overflow: elide;
-                        }
-                    }
+                            Text {
+                                text: "+";
+                                color: Theme.accent;
+                                font-size: 12px;
+                                font-weight: 700;
+                                horizontal-alignment: center;
+                                vertical-alignment: center;
+                            }
 
-                    touch_item := TouchArea {
-                        clicked => {
-                            if (item.is_folder) {
-                                root.folder_toggled(item.path);
-                            } else {
-                                root.note_clicked(item.path);
+                            touch_subfolder := TouchArea {
+                                mouse-cursor: pointer;
+                                clicked => { root.open_folder_creator(item.path); }
                             }
                         }
                     }

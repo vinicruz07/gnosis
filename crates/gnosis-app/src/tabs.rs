@@ -276,6 +276,26 @@ impl TabManager {
         self.active_pane_mut().close_tab(idx)
     }
 
+    /// Atualiza os caminhos das abas abertas quando um arquivo ou pasta é movido.
+    pub fn update_paths_on_move(&mut self, old_path: &str, new_path: &str, is_folder: bool) {
+        let old_prefix = format!("{old_path}/");
+        let new_prefix = format!("{new_path}/");
+
+        for pane in &mut self.panes {
+            for tab in &mut pane.tabs {
+                if tab.path == old_path {
+                    tab.path = new_path.to_string();
+                    tab.title = clean_title_from_path(new_path).to_string();
+                } else if is_folder && tab.path.starts_with(&old_prefix) {
+                    let suffix = &tab.path[old_prefix.len()..];
+                    let updated = format!("{new_prefix}{suffix}");
+                    tab.title = clean_title_from_path(&updated).to_string();
+                    tab.path = updated;
+                }
+            }
+        }
+    }
+
     /// Alterna ou define a divisão de tela entre painéis.
     pub fn set_split(&mut self, direction: SplitDirection) {
         self.split_direction = direction;

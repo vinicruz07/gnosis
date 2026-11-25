@@ -131,6 +131,8 @@ export component AppWindow inherits Window {
     callback toggle_sidebar();
     callback new_note_requested();
     callback new_membrane_requested();
+    callback new_folder_requested(string, string);
+    callback item_moved(string, string);
     callback content_changed(string);
 
     // Callbacks do Editor
@@ -283,6 +285,8 @@ export component AppWindow inherits Window {
                 toggle_sidebar => { root.toggle_sidebar(); }
                 new_note_requested => { root.new_note_requested(); }
                 new_membrane_requested => { root.new_membrane_requested(); }
+                new_folder_requested(parent, name) => { root.new_folder_requested(parent, name); }
+                item_moved(src, dst) => { root.item_moved(src, dst); }
                 settings_clicked => { root.open_settings(); }
                 grimoire_clicked => { root.open_grimoire_modal(); }
             }

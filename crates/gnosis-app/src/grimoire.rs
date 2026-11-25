@@ -267,6 +267,78 @@ impl GrimoireManager {
         Ok(target_path)
     }
 
+    /// Cria uma pasta ou subpasta no Grimório ativo.
+    pub fn create_folder_in_active(&self, relative_folder: &str) -> Result<PathBuf, String> {
+        let Some(active) = &self.active_grimoire else {
+            return Err("Nenhum Grimório ativo no momento.".to_string());
+        };
+
+        let clean = relative_folder.trim().trim_matches(['/', '\\']);
+        if clean.is_empty() || clean.contains("..") {
+            return Err("Caminho de pasta inválido.".to_string());
+        }
+
+        let target_path = active.path.join(clean);
+        fs::create_dir_all(&target_path)
+            .map_err(|e| format!("Falha ao criar pasta {}: {}", target_path.display(), e))?;
+
+        Ok(target_path)
+    }
+
+    /// Move um arquivo ou pasta no Grimório ativo para `dest_folder` (vazio = raiz).
+    /// Retorna o novo caminho relativo usando `/`.
+    pub fn move_entry_in_active(
+        &self,
+        source_rel: &str,
+        dest_folder_rel: &str,
+    ) -> Result<String, String> {
+        let Some(active) = &self.active_grimoire else {
+            return Err("Nenhum Grimório ativo no momento.".to_string());
+        };
+
+        let src_clean = source_rel.trim().trim_matches(['/', '\\']);
+        let dest_clean = dest_folder_rel.trim().trim_matches(['/', '\\']);
+        if src_clean.is_empty() || src_clean.contains("..") || dest_clean.contains("..") {
+            return Err("Caminho inválido para movimentação.".to_string());
+        }
+
+        let src_abs = active.path.join(src_clean);
+        if !src_abs.exists() {
+            return Err(format!("Origem não existe no disco: {src_clean}"));
+        }
+
+        let file_name = src_abs
+            .file_name()
+            .and_then(|n| n.to_str())
+            .ok_or_else(|| "Nome de arquivo inválido.".to_string())?;
+
+        let new_rel = if dest_clean.is_empty() {
+            file_name.to_string()
+        } else {
+            format!("{}/{}", dest_clean.replace('\\', "/"), file_name)
+        };
+
+        let dst_abs = active.path.join(&new_rel);
+        if dst_abs == src_abs {
+            return Err("O item já está no destino selecionado.".to_string());
+        }
+        if dst_abs.exists() {
+            return Err(format!("Já existe um item em '{new_rel}'."));
+        }
+
+        if let Some(parent) = dst_abs.parent() {
+            if !parent.exists() {
+                fs::create_dir_all(parent)
+                    .map_err(|e| format!("Falha ao preparar pasta de destino: {e}"))?;
+            }
+        }
+
+        fs::rename(&src_abs, &dst_abs)
+            .map_err(|e| format!("Falha ao mover '{src_clean}' para '{new_rel}': {e}"))?;
+
+        Ok(new_rel)
+    }
+
     /// Função recursiva auxiliar para varrer arquivos no disco ignorando pastas de sistema.
     fn scan_dir_recursive(root: &Path, current: &Path, results: &mut Vec<String>) {
         let Ok(read_dir) = fs::read_dir(current) else {

@@ -1639,6 +1639,105 @@ fn main() {
         });
     }
 
+    // Callback: Criar Pasta ou Subpasta na barra lateral
+    {
+        let app_weak = app_weak.clone();
+        let state_arc = Arc::clone(&state_arc);
+        let grimoire_arc = Arc::clone(&grimoire_arc);
+        app.on_new_folder_requested(move |parent_folder, folder_name| {
+            let parent_str = parent_folder.as_str().trim();
+            let name_str = folder_name.as_str().trim();
+            let parent_opt = if parent_str.is_empty() {
+                None
+            } else {
+                Some(parent_str)
+            };
+
+            let created_rel = if let Ok(mut st) = state_arc.lock() {
+                match st.create_folder(parent_opt, name_str) {
+                    Ok(rel_path) => {
+                        let items = to_slint_tree(&st.visible_tree_items());
+                        if let Some(w) = app_weak.upgrade() {
+                            w.set_file_tree(ModelRc::new(VecModel::from(items)));
+                        }
+                        Some(rel_path)
+                    }
+                    Err(err) => {
+                        tracing::warn!("Falha ao criar pasta na árvore: {}", err);
+                        None
+                    }
+                }
+            } else {
+                None
+            };
+
+            if let Some(rel_path) = created_rel {
+                if let Ok(gm) = grimoire_arc.lock() {
+                    if gm.active_grimoire().is_some() {
+                        if let Err(err) = gm.create_folder_in_active(&rel_path) {
+                            tracing::warn!("Falha ao criar pasta no disco: {}", err);
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    // Callback: Mover arquivo ou pasta por Drag & Drop na barra lateral
+    {
+        let app_weak = app_weak.clone();
+        let state_arc = Arc::clone(&state_arc);
+        let grimoire_arc = Arc::clone(&grimoire_arc);
+        let tab_arc = Arc::clone(&tab_arc);
+        app.on_item_moved(move |source_path, target_folder| {
+            let src = source_path.as_str().trim();
+            let dst = target_folder.as_str().trim();
+            let dst_opt = if dst.is_empty() { None } else { Some(dst) };
+
+            // Primeiro move no disco caso haja Grimório ativo (e arquivo exista no disco)
+            if let Ok(gm) = grimoire_arc.lock() {
+                if let Some(active) = gm.active_grimoire() {
+                    if active.path.join(src).exists() {
+                        if let Err(err) = gm.move_entry_in_active(src, dst) {
+                            tracing::warn!("Falha ao mover item no disco: {}", err);
+                            return;
+                        }
+                    }
+                }
+            }
+
+            // Atualiza árvore de estado em memória
+            let moved_info = if let Ok(mut st) = state_arc.lock() {
+                match st.move_entry(src, dst_opt) {
+                    Ok((new_path, is_folder)) => {
+                        let items = to_slint_tree(&st.visible_tree_items());
+                        if let Some(w) = app_weak.upgrade() {
+                            w.set_file_tree(ModelRc::new(VecModel::from(items)));
+                        }
+                        Some((new_path, is_folder))
+                    }
+                    Err(err) => {
+                        tracing::warn!("Falha ao mover item na árvore: {}", err);
+                        None
+                    }
+                }
+            } else {
+                None
+            };
+
+            // Atualiza abas abertas para refletir o novo caminho
+            if let Some((new_path, is_folder)) = moved_info {
+                if let Ok(mut tm) = tab_arc.lock() {
+                    tm.update_paths_on_move(src, &new_path, is_folder);
+                    if let Some(w) = app_weak.upgrade() {
+                        let tabs = to_slint_tabs(tm.active_pane());
+                        w.set_tabs(ModelRc::new(VecModel::from(tabs)));
+                    }
+                }
+            }
+        });
+    }
+
     // Callback: Selecionar nota na barra lateral
     {
         let app_weak = app_weak.clone();

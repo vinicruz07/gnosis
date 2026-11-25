@@ -156,6 +156,137 @@ impl AppState {
         }
     }
 
+    /// Cria uma pasta ou subpasta na árvore de arquivos e a expande.
+    pub fn create_folder(&mut self, parent_folder: Option<&str>, name: &str) -> Result<String, String> {
+        let trimmed = name.trim().trim_matches('/');
+        if trimmed.is_empty() || trimmed.contains("..") || trimmed.contains('/') || trimmed.contains('\\') {
+            return Err("Nome de pasta inválido.".to_string());
+        }
+
+        let parent_clean = parent_folder.map(|p| p.trim_matches('/')).filter(|p| !p.is_empty());
+        let full_path = match parent_clean {
+            Some(parent) => format!("{parent}/{trimmed}"),
+            None => trimmed.to_string(),
+        };
+
+        if self.entries.iter().any(|e| e.path == full_path) {
+            return Err(format!("Já existe um item chamado '{full_path}'."));
+        }
+
+        self.add_entry(FileTreeEntry {
+            id: full_path.clone(),
+            name: trimmed.to_string(),
+            path: full_path.clone(),
+            is_folder: true,
+            parent_path: parent_clean.map(|p| p.to_string()),
+            icon: None,
+        });
+
+        if let Some(parent) = parent_clean {
+            self.expanded_folders.insert(parent.to_string());
+        }
+        self.expanded_folders.insert(full_path.clone());
+
+        Ok(full_path)
+    }
+
+    /// Move um arquivo ou pasta para dentro de `target_folder` (`None` = raiz).
+    /// Retorna o novo caminho relativo em caso de sucesso.
+    pub fn move_entry(
+        &mut self,
+        source_path: &str,
+        target_folder: Option<&str>,
+    ) -> Result<(String, bool), String> {
+        let src = source_path.trim_matches('/');
+        if src.is_empty() {
+            return Err("Caminho de origem vazio.".to_string());
+        }
+
+        let Some(src_entry) = self.entries.iter().find(|e| e.path == src).cloned() else {
+            return Err(format!("Item não encontrado: {src}"));
+        };
+
+        let target_clean = target_folder
+            .map(|p| p.trim_matches('/'))
+            .filter(|p| !p.is_empty());
+
+        if let Some(dest) = target_clean {
+            if !self.entries.iter().any(|e| e.path == dest && e.is_folder) {
+                return Err(format!("Pasta de destino inválida: {dest}"));
+            }
+            if src_entry.is_folder && (dest == src || dest.starts_with(&format!("{src}/"))) {
+                return Err("Não é possível mover uma pasta para dentro dela mesma.".to_string());
+            }
+        }
+
+        if src_entry.parent_path.as_deref() == target_clean {
+            return Err("O item já está nesta pasta.".to_string());
+        }
+
+        let file_segment = src.rsplit('/').next().unwrap_or(src);
+        let new_path = match target_clean {
+            Some(dest) => format!("{dest}/{file_segment}"),
+            None => file_segment.to_string(),
+        };
+
+        if self.entries.iter().any(|e| e.path == new_path) {
+            return Err(format!("Já existe um item em '{new_path}'."));
+        }
+
+        let old_prefix = format!("{src}/");
+        let new_prefix = format!("{new_path}/");
+
+        for entry in &mut self.entries {
+            if entry.path == src {
+                entry.path = new_path.clone();
+                entry.id = new_path.clone();
+                entry.parent_path = target_clean.map(|p| p.to_string());
+            } else if src_entry.is_folder && entry.path.starts_with(&old_prefix) {
+                let suffix = &entry.path[old_prefix.len()..];
+                let updated = format!("{new_prefix}{suffix}");
+                entry.path = updated.clone();
+                entry.id = updated;
+                if let Some(parent) = &entry.parent_path {
+                    if parent == src {
+                        entry.parent_path = Some(new_path.clone());
+                    } else if parent.starts_with(&old_prefix) {
+                        let p_suffix = &parent[old_prefix.len()..];
+                        entry.parent_path = Some(format!("{new_prefix}{p_suffix}"));
+                    }
+                }
+            }
+        }
+
+        if src_entry.is_folder {
+            let old_expanded: Vec<String> = self.expanded_folders.iter().cloned().collect();
+            for exp in old_expanded {
+                if exp == src {
+                    self.expanded_folders.remove(&exp);
+                    self.expanded_folders.insert(new_path.clone());
+                } else if exp.starts_with(&old_prefix) {
+                    self.expanded_folders.remove(&exp);
+                    let suffix = &exp[old_prefix.len()..];
+                    self.expanded_folders.insert(format!("{new_prefix}{suffix}"));
+                }
+            }
+        }
+
+        if let Some(active) = &self.active_note_path {
+            if active == src {
+                self.active_note_path = Some(new_path.clone());
+            } else if src_entry.is_folder && active.starts_with(&old_prefix) {
+                let suffix = &active[old_prefix.len()..];
+                self.active_note_path = Some(format!("{new_prefix}{suffix}"));
+            }
+        }
+
+        if let Some(dest) = target_clean {
+            self.expanded_folders.insert(dest.to_string());
+        }
+
+        Ok((new_path, src_entry.is_folder))
+    }
+
     /// Popula a lista de entradas a partir de caminhos relativos de arquivos (ex: "Notas/Estudos/Rust.md").
     pub fn populate_from_paths<I, S>(&mut self, paths: I)
     where
@@ -465,6 +596,36 @@ mod tests {
         // Valor negativo deve ser limitado a 0.0
         state.set_ime_bottom_inset(-50.0);
         assert_eq!(state.ime_bottom_inset(), 0.0);
+    }
+
+    #[test]
+    fn test_create_folder_and_move_entry() {
+        let mut state = AppState::new("Vault", "/tmp/vault");
+        state.populate_from_paths(["Nota1.md", "PastaA/Nota2.md"]);
+
+        // Criar pasta na raiz e subpasta dentro dela
+        let f1 = state.create_folder(None, "Projetos").ok();
+        assert_eq!(f1.as_deref(), Some("Projetos"));
+        let f2 = state.create_folder(Some("Projetos"), "Rust").ok();
+        assert_eq!(f2.as_deref(), Some("Projetos/Rust"));
+
+        // Mover arquivo da raiz para subpasta
+        let moved = state.move_entry("Nota1.md", Some("Projetos/Rust")).ok();
+        assert_eq!(moved, Some(("Projetos/Rust/Nota1.md".to_string(), false)));
+        assert!(state.entries.iter().any(|e| e.path == "Projetos/Rust/Nota1.md"));
+        assert!(!state.entries.iter().any(|e| e.path == "Nota1.md"));
+
+        // Mover pasta para dentro de outra e depois voltar para a raiz
+        let moved_folder = state.move_entry("PastaA", Some("Projetos")).ok();
+        assert_eq!(moved_folder, Some(("Projetos/PastaA".to_string(), true)));
+        assert!(state.entries.iter().any(|e| e.path == "Projetos/PastaA/Nota2.md"));
+
+        // Não pode mover pasta para dentro dela mesma
+        assert!(state.move_entry("Projetos", Some("Projetos/PastaA")).is_err());
+
+        // Mover arquivo de volta para a raiz
+        let back_to_root = state.move_entry("Projetos/Rust/Nota1.md", None).ok();
+        assert_eq!(back_to_root, Some(("Nota1.md".to_string(), false)));
     }
 }
 
