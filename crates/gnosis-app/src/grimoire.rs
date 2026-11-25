@@ -205,16 +205,76 @@ impl GrimoireManager {
         Ok(info)
     }
 
-    /// Varre recursivamente o Grimório ativo e retorna os caminhos relativos de todas as notas `.md` e arquivos `.canvas`.
-    pub fn scan_active_grimoire_relative_paths(&self) -> Vec<String> {
+    /// Varre recursivamente o Grimório ativo e retorna `(arquivos, pastas_vazias)` relativos com `/`.
+    pub fn scan_active_grimoire_entries(&self) -> (Vec<String>, Vec<String>) {
         let Some(active) = &self.active_grimoire else {
-            return Vec::new();
+            return (Vec::new(), Vec::new());
         };
 
-        let mut paths = Vec::new();
-        Self::scan_dir_recursive(&active.path, &active.path, &mut paths);
-        paths.sort();
-        paths
+        let mut files = Vec::new();
+        let mut folders = Vec::new();
+        Self::scan_dir_recursive_entries(&active.path, &active.path, &mut files, &mut folders);
+        files.sort();
+        folders.sort();
+        (files, folders)
+    }
+
+    /// Varre recursivamente o Grimório ativo e retorna os caminhos relativos de todas as notas `.md`, `.canvas`, `.membrana` e `.grafo`.
+    pub fn scan_active_grimoire_relative_paths(&self) -> Vec<String> {
+        self.scan_active_grimoire_entries().0
+    }
+
+    /// Lê o conteúdo textual de um arquivo relativo dentro do Grimório ativo.
+    pub fn read_entry_text(&self, relative_path: &str) -> Result<String, String> {
+        let Some(active) = &self.active_grimoire else {
+            return Err("Nenhum Grimório ativo no momento.".to_string());
+        };
+
+        let clean = relative_path.trim().trim_matches(['/', '\\']);
+        if clean.is_empty() || clean.contains("..") {
+            return Err("Caminho inválido para leitura.".to_string());
+        }
+
+        let target = active.path.join(clean);
+        fs::read_to_string(&target)
+            .map_err(|e| format!("Falha ao ler arquivo '{}': {}", target.display(), e))
+    }
+
+    /// Grava o conteúdo textual de um arquivo relativo dentro do Grimório ativo.
+    pub fn write_entry_text(&self, relative_path: &str, content: &str) -> Result<(), String> {
+        let Some(active) = &self.active_grimoire else {
+            return Err("Nenhum Grimório ativo no momento.".to_string());
+        };
+
+        let clean = relative_path.trim().trim_matches(['/', '\\']);
+        if clean.is_empty() || clean.contains("..") {
+            return Err("Caminho inválido para gravação.".to_string());
+        }
+
+        let target = active.path.join(clean);
+        if let Some(parent) = target.parent() {
+            if !parent.exists() {
+                fs::create_dir_all(parent)
+                    .map_err(|e| format!("Falha ao criar diretório '{}': {}", parent.display(), e))?;
+            }
+        }
+
+        fs::write(&target, content)
+            .map_err(|e| format!("Falha ao salvar arquivo '{}': {}", target.display(), e))
+    }
+
+    /// Garante que exista pelo menos um Grimório real no disco caso nenhum esteja ativo.
+    pub fn ensure_default_grimoire(&mut self) -> Result<GrimoireInfo, String> {
+        if let Some(active) = &self.active_grimoire {
+            return Ok(active.clone());
+        }
+        if let Some(first) = self.known_grimoires.first().cloned() {
+            if first.path.exists() && first.path.is_dir() {
+                return self.open_existing_grimoire(&first.path);
+            }
+        }
+        let default_parent = self.config_dir.join("Vaults");
+        self.create_grimoire(&default_parent, "Meu Grimório")
     }
 
     /// Cria uma nova nota no Grimório ativo com o título e conteúdo fornecidos.
@@ -364,8 +424,13 @@ impl GrimoireManager {
         }
     }
 
-    /// Função recursiva auxiliar para varrer arquivos no disco ignorando pastas de sistema.
-    fn scan_dir_recursive(root: &Path, current: &Path, results: &mut Vec<String>) {
+    /// Função recursiva auxiliar para varrer arquivos e pastas no disco ignorando pastas de sistema.
+    fn scan_dir_recursive_entries(
+        root: &Path,
+        current: &Path,
+        files: &mut Vec<String>,
+        folders: &mut Vec<String>,
+    ) {
         let Ok(read_dir) = fs::read_dir(current) else {
             return;
         };
@@ -380,17 +445,24 @@ impl GrimoireManager {
             }
 
             if path.is_dir() {
-                Self::scan_dir_recursive(root, &path, results);
+                if let Ok(rel) = path.strip_prefix(root) {
+                    let rel_str = rel.to_string_lossy().replace('\\', "/");
+                    if !rel_str.is_empty() {
+                        folders.push(rel_str);
+                    }
+                }
+                Self::scan_dir_recursive_entries(root, &path, files, folders);
             } else if path.is_file() {
                 let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
                 if ext.eq_ignore_ascii_case("md")
                     || ext.eq_ignore_ascii_case("markdown")
                     || ext.eq_ignore_ascii_case("canvas")
                     || ext.eq_ignore_ascii_case("membrana")
+                    || ext.eq_ignore_ascii_case("grafo")
                 {
                     if let Ok(rel) = path.strip_prefix(root) {
                         let rel_str = rel.to_string_lossy().replace('\\', "/");
-                        results.push(rel_str);
+                        files.push(rel_str);
                     }
                 }
             }
@@ -663,6 +735,30 @@ mod tests {
         let updated = mgr.scan_active_grimoire_relative_paths();
         assert!(updated.contains(&"Nova Membrana.membrana".to_string()));
         assert!(updated.contains(&"Nova Membrana 2.membrana".to_string()));
+
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_scan_entries_includes_grafo_empty_folders_and_rw() {
+        let temp_dir = std::env::temp_dir().join(format!("gnosis_test_real_io_{}", md5_or_simple_hash(b"real_io")));
+        let _ = fs::remove_dir_all(&temp_dir);
+        let _ = fs::create_dir_all(&temp_dir);
+
+        let mut mgr = GrimoireManager::with_config_dir(temp_dir.clone());
+        let _ = mgr.create_grimoire(&temp_dir, "Cofre Real").unwrap_or_else(|e| panic!("{}", e));
+
+        let _ = mgr.create_folder_in_active("PastaVazia");
+        let _ = mgr.write_entry_text("Notas/Teste.md", "# Real\nConteúdo salvo.").unwrap_or_else(|e| panic!("{}", e));
+        let _ = mgr.write_entry_text("mapa.grafo", "{\"nodes\":[],\"edges\":[]}").unwrap_or_else(|e| panic!("{}", e));
+
+        let (files, folders) = mgr.scan_active_grimoire_entries();
+        assert!(folders.contains(&"PastaVazia".to_string()));
+        assert!(files.contains(&"Notas/Teste.md".to_string()));
+        assert!(files.contains(&"mapa.grafo".to_string()));
+
+        let read_back = mgr.read_entry_text("Notas/Teste.md").unwrap_or_default();
+        assert_eq!(read_back, "# Real\nConteúdo salvo.");
 
         let _ = fs::remove_dir_all(&temp_dir);
     }

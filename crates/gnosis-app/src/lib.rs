@@ -11,6 +11,7 @@
 #![deny(clippy::panic)]
 
 pub mod canvas_view;
+pub mod document_editor;
 pub mod editor;
 pub mod fuzzy;
 pub mod graph_view;

@@ -13,6 +13,7 @@ import { SettingsModal } from "settings_modal.slint";
 import { GrimoireModal, GrimoireItemData } from "grimoire_modal.slint";
 import { MobileBottomBar, MobileDrawer } from "mobile_nav.slint";
 import { ContextMenu, ContextMenuItem, ConfirmDeleteModal } from "context_menu.slint";
+import { DocumentEditor } from "document_editor.slint";
 export { GrimoireItemData }
 
 
@@ -121,6 +122,7 @@ export component AppWindow inherits Window {
     in-out property <bool> confirm_delete_dont_ask_again: false;
     in-out property <bool> sidebar_creating_folder: false;
     in-out property <string> sidebar_pending_folder_parent: "";
+    in property <image> doc_surface_image;
 
     // Propriedades do Modal de Grimórios (Vaults)
     in-out property <bool> grimoire_modal_open: false;
@@ -265,6 +267,11 @@ export component AppWindow inherits Window {
     callback canvas_context_menu(length, length);
     callback confirm_delete_accepted();
     callback confirm_delete_cancelled();
+    callback doc_viewport_resized(float, float);
+    callback doc_pointer_down(float, float, bool);
+    callback doc_pointer_moved(float, float);
+    callback doc_scrolled(float);
+    callback doc_key_pressed(string, bool, bool, bool);
 
     // Callbacks do Modal de Grimórios (Vaults)
     callback open_grimoire_modal();
@@ -722,22 +729,15 @@ export component AppWindow inherits Window {
                                 }
                             }
 
-                            if (!root.is_editing): RichViewer {
+                            if (!root.is_editing): DocumentEditor {
                                 vertical-stretch: 1;
-                                blocks: root.ast_blocks;
-                                task_toggled(idx) => { root.task_checkbox_toggled(idx); }
-                                math_clicked(idx) => { root.math_clicked(idx); }
-                                math_applied(idx, formula) => { root.math_applied(idx, formula); }
-                                math_cancelled(idx) => { root.math_cancelled(idx); }
-                                block_clicked(id) => { root.block_clicked(id); }
-                                block_applied(id, text) => { root.block_applied(id, text); }
-                                block_cancelled(id) => { root.block_cancelled(id); }
-                                block_enter_pressed(id, text) => { root.block_enter_pressed(id, text); }
-                                block_backspace_pressed(id) => { root.block_backspace_pressed(id); }
-                                block_navigate_up(id, text) => { root.block_navigate_up(id, text); }
-                                block_navigate_down(id, text) => { root.block_navigate_down(id, text); }
-                                add_block_at_end_requested => { root.add_block_at_end_requested(); }
-                                block_context_menu(id, x, y) => { root.editor_context_menu(id, x, y); }
+                                surface_image: root.doc_surface_image;
+                                viewport_resized(w, h) => { root.doc_viewport_resized(w, h); }
+                                pointer_down(x, y, shift) => { root.doc_pointer_down(x, y, shift); }
+                                pointer_moved(x, y) => { root.doc_pointer_moved(x, y); }
+                                scrolled(dy) => { root.doc_scrolled(dy); }
+                                key_pressed_event(text, ctrl, shift, alt) => { root.doc_key_pressed(text, ctrl, shift, alt); }
+                                context_menu_requested(x, y) => { root.editor_context_menu(-1, x, y); }
                             }
                         }
                     }

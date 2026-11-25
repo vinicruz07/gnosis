@@ -9,6 +9,7 @@
 #![deny(clippy::expect_used)]
 #![deny(clippy::panic)]
 
+use gnosis_app::document_editor::{DocumentEditor, DocumentKeyOutcome, DocumentThemeColors};
 use gnosis_app::runtime::{self, RenderBackendMode};
 
 use gnosis_app::{
@@ -21,7 +22,7 @@ use gnosis_app::{
     TabData, TabManager, Theme, ThemeColors, ThemeManager, TreeItemData, TreeItemModel,
 };
 
-use gnosis_graph::model::{EdgeType, KnowledgeGraph, NodeType};
+use gnosis_graph::model::{KnowledgeGraph, NodeType};
 use slint::{ComponentHandle, ModelRc, VecModel};
 use std::sync::{Arc, Mutex};
 use tracing::info;
@@ -254,8 +255,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let initial_theme = theme_mgr.active_theme().clone();
     apply_theme_to_slint(&app, &initial_theme);
 
-    // Inicializa gerenciador de Grimórios (Vaults)
-    let grimoire_mgr = GrimoireManager::default();
+    // Inicializa gerenciador de Grimórios (Vaults) garantindo uma pasta real no disco
+    let mut grimoire_mgr = GrimoireManager::default();
+    if grimoire_mgr.active_grimoire().is_none() {
+        if let Err(err) = grimoire_mgr.ensure_default_grimoire() {
+            tracing::warn!("Falha ao inicializar Grimório padrão no disco: {}", err);
+        }
+    }
     let initial_grimoire_name = if let Some(active) = grimoire_mgr.active_grimoire() {
         active.name.clone()
     } else {
@@ -267,63 +273,40 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "vault".to_string()
     };
 
-    // Inicializa estado do Grimório e árvore de notas
+    // Inicializa estado do Grimório e árvore real de arquivos e pastas
     let mut state = AppState::new(initial_grimoire_name.clone(), initial_grimoire_path.clone());
     app.set_vault_name(initial_grimoire_name.as_str().into());
 
-    let scanned_paths = grimoire_mgr.scan_active_grimoire_relative_paths();
-    if !scanned_paths.is_empty() {
-        state.populate_from_paths(scanned_paths);
-    } else {
-        let initial_paths = [
-            "00_Inbox/Ideias Rápidas.md",
-            "01_Projetos/Rust/Gnosis Core.md",
-            "01_Projetos/Rust/Slint Shell.md",
-            "02_Estudos/Grafos e Física 2D.md",
-            "03_Arquivo/2026/Planejamento.md",
-            "Diário de Bordo.md",
-        ];
-        state.populate_from_paths(initial_paths);
-        state.set_entry_icon("01_Projetos/Rust/Gnosis Core.md", Some("🧠".to_string()));
-        state.set_entry_icon("00_Inbox/Ideias Rápidas.md", Some("💡".to_string()));
-        state.set_entry_icon("02_Estudos/Grafos e Física 2D.md", Some("🕸️".to_string()));
-        state.set_entry_icon("Diário de Bordo.md", Some("📖".to_string()));
-        state.set_entry_icon("03_Arquivo/2026/Planejamento.md", Some("📅".to_string()));
-        state.set_entry_icon("01_Projetos/Rust/Slint Shell.md", Some("🎨".to_string()));
-    }
+    let (scanned_files, scanned_folders) = grimoire_mgr.scan_active_grimoire_entries();
+    state.populate_from_scan(&scanned_files, &scanned_folders);
 
-    // Conteúdo demonstrativo rico com múltiplos blocos AST
-    let sample_markdown = r##"---
-title: Gnosis Core
-icon: 🧠
-color: "#ffaa00"
----
-# Gnosis Core & Temas Filosóficos
-Recompilação de alto desempenho do Obsidian em Rust puro com temas conceituais:
-- **Abyss**: O vazio insondável e o silêncio primordial para introspecção.
-- **Aether**: O quinto elemento etéreo de luz translúcida e pensamento puro.
-- **Arcana**: Os mistérios herméticos e a alquimia da mente em púrpura.
-- **Boreas**: A serenidade gélida do vento boreal límpido.
+    // Abre a primeira nota .md real do Grimório (ou estado vazio se o cofre estiver vazio)
+    let first_md_opt = scanned_files
+        .iter()
+        .find(|p| p.ends_with(".md") || p.ends_with(".markdown"))
+        .cloned();
 
-```rust
-fn main() {
-    println!("Gnosis: Alternância dinâmica de temas sem reiniciar!");
-}
-```
-
-> [!NOTE] Design Tokens Dinâmicos
-> Pressione `Ctrl+Shift+T` ou clique no selo de tema na barra de status para alternar.
-"##;
-
-    // Inicializa gerenciador de abas com ícone
     let mut tab_mgr = TabManager::new();
-    tab_mgr.open_note_with_icon("01_Projetos/Rust/Gnosis Core.md", "Gnosis Core", Some("🧠".to_string()));
+    let (initial_note_path, initial_note_title, initial_note_content) =
+        if let Some(ref rel_path) = first_md_opt {
+            let content = grimoire_mgr.read_entry_text(rel_path).unwrap_or_default();
+            let title = gnosis_app::tabs::clean_title_from_path(rel_path).to_string();
+            state.select_note(rel_path, &content);
+            let icon = if state.active_note_icon.is_empty() {
+                None
+            } else {
+                Some(state.active_note_icon.clone())
+            };
+            tab_mgr.open_note_with_icon(rel_path, &title, icon);
+            (rel_path.clone(), title, content)
+        } else {
+            (String::new(), "Nenhuma nota aberta".to_string(), String::new())
+        };
 
+    // Inicializa controlador do editor com Ropey usando o conteúdo real do disco
+    let editor_ctrl = EditorController::new(&initial_note_path, &initial_note_content);
 
-    // Inicializa controlador do editor com Ropey
-    let editor_ctrl = EditorController::new("01_Projetos/Rust/Gnosis Core.md", sample_markdown);
-
-    // Inicializa Quick Switcher com as notas catalogadas
+    // Inicializa Quick Switcher com os arquivos reais catalogados
     let mut quick_mgr = QuickSwitcherManager::new();
     for entry in &state.entries {
         if !entry.is_folder {
@@ -331,34 +314,29 @@ fn main() {
         }
     }
 
-    // Inicializa Grafo de Conhecimento com conexões
+    // Inicializa Grafo de Conhecimento a partir dos arquivos reais do Grimório
     let mut knowledge_graph = KnowledgeGraph::new();
-    knowledge_graph.add_or_update_node("00_Inbox/Ideias Rápidas.md", "Ideias Rápidas", NodeType::Note, None);
-    knowledge_graph.add_or_update_node("01_Projetos/Rust/Gnosis Core.md", "Gnosis Core", NodeType::Note, None);
-    knowledge_graph.add_or_update_node("01_Projetos/Rust/Slint Shell.md", "Slint Shell", NodeType::Note, None);
-    knowledge_graph.add_or_update_node("02_Estudos/Grafos e Física 2D.md", "Grafos e Física", NodeType::Note, None);
-    knowledge_graph.add_or_update_node("03_Arquivo/2026/Planejamento.md", "Planejamento", NodeType::Note, None);
-    knowledge_graph.add_or_update_node("Diário de Bordo.md", "Diário de Bordo", NodeType::Note, None);
-    knowledge_graph.add_or_update_node("#rust", "Rust Tag", NodeType::Tag, None);
-    knowledge_graph.add_or_update_node("#obsidian", "Obsidian Tag", NodeType::Tag, None);
-    knowledge_graph.add_or_update_node("Nota_Fantasma.md", "Nota Fantasma", NodeType::Unresolved, None);
-
-    let _ = knowledge_graph.add_edge("01_Projetos/Rust/Gnosis Core.md", "01_Projetos/Rust/Slint Shell.md", EdgeType::WikiLink, None, 1.0);
-    let _ = knowledge_graph.add_edge("01_Projetos/Rust/Slint Shell.md", "02_Estudos/Grafos e Física 2D.md", EdgeType::WikiLink, None, 1.0);
-    let _ = knowledge_graph.add_edge("01_Projetos/Rust/Gnosis Core.md", "#rust", EdgeType::TagRelation, None, 0.5);
-    let _ = knowledge_graph.add_edge("01_Projetos/Rust/Slint Shell.md", "#rust", EdgeType::TagRelation, None, 0.5);
-    let _ = knowledge_graph.add_edge("00_Inbox/Ideias Rápidas.md", "01_Projetos/Rust/Gnosis Core.md", EdgeType::WikiLink, None, 1.0);
-    let _ = knowledge_graph.add_edge("00_Inbox/Ideias Rápidas.md", "Nota_Fantasma.md", EdgeType::WikiLink, None, 1.0);
+    for entry in &state.entries {
+        if !entry.is_folder {
+            knowledge_graph.add_or_update_node(&entry.path, &entry.name, NodeType::Note, None);
+        }
+    }
 
     let mut graph_ctrl = GraphViewController::new(knowledge_graph);
-    for _ in 0..50 {
+    if let Some(active) = grimoire_mgr.active_grimoire() {
+        let default_grafo = active.path.join("universo.grafo");
+        if default_grafo.exists() {
+            let _ = graph_ctrl.load_from_grafo_file(&default_grafo);
+        }
+    }
+    for _ in 0..30 {
         graph_ctrl.step();
     }
 
     // Configura propriedades iniciais na janela
     app.set_vault_name(state.vault_name.as_str().into());
-    app.set_active_note_title("Gnosis Core".into());
-    app.set_active_note_icon("🧠".into());
+    app.set_active_note_title(initial_note_title.as_str().into());
+    app.set_active_note_icon(state.active_note_icon.as_str().into());
     app.set_active_note_content(editor_ctrl.content().as_str().into());
     app.set_is_editing(editor_ctrl.mode == EditorMode::Edit);
     app.set_word_count(editor_ctrl.word_count() as i32);
@@ -458,13 +436,393 @@ fn main() {
     let sticker_arc = Arc::new(Mutex::new(sticker_ctrl));
     let settings_arc = Arc::new(Mutex::new(settings_ctrl));
     let grimoire_arc = Arc::new(Mutex::new(grimoire_mgr));
+    let mut doc_editor_ctrl = DocumentEditor::new(15.0);
+    doc_editor_ctrl.set_text(&initial_note_content);
+    let doc_editor_arc = Arc::new(Mutex::new(doc_editor_ctrl));
+    let dirty_since: Arc<Mutex<Option<std::time::Instant>>> = Arc::new(Mutex::new(None));
+    let active_grafo_rel: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
     let app_weak = app.as_weak();
+
+    fn parse_rgba_bytes(hex: &str, alpha: u8) -> [u8; 4] {
+        let clean = hex.trim_start_matches('#');
+        if clean.len() == 6 {
+            let r = u8::from_str_radix(&clean[0..2], 16).unwrap_or(30);
+            let g = u8::from_str_radix(&clean[2..4], 16).unwrap_or(30);
+            let b = u8::from_str_radix(&clean[4..6], 16).unwrap_or(46);
+            [r, g, b, alpha]
+        } else {
+            [30, 30, 46, alpha]
+        }
+    }
+
+    fn theme_to_doc_colors(theme: &ThemeColors) -> DocumentThemeColors {
+        let accent = parse_rgba_bytes(&theme.accent, 255);
+        DocumentThemeColors {
+            background: parse_rgba_bytes(&theme.background, 255),
+            text_primary: parse_rgba_bytes(&theme.text_primary, 255),
+            text_muted: parse_rgba_bytes(&theme.text_muted, 255),
+            accent,
+            selection: [accent[0], accent[1], accent[2], 75],
+            surface: parse_rgba_bytes(&theme.surface, 255),
+        }
+    }
+
+    fn render_doc_surface(
+        app_weak: &slint::Weak<AppWindow>,
+        doc_editor_arc: &Arc<Mutex<DocumentEditor>>,
+        theme_arc: &Arc<Mutex<ThemeManager>>,
+    ) {
+        let colors = theme_arc
+            .lock()
+            .map(|tm| theme_to_doc_colors(tm.active_theme()))
+            .unwrap_or(DocumentThemeColors {
+                background: [24, 24, 37, 255],
+                text_primary: [205, 214, 244, 255],
+                text_muted: [166, 173, 200, 255],
+                accent: [137, 180, 250, 255],
+                selection: [137, 180, 250, 75],
+                surface: [49, 50, 68, 255],
+            });
+        if let Ok(mut doc) = doc_editor_arc.lock() {
+            let img = doc.render_to_slint_image(colors);
+            if let Some(w) = app_weak.upgrade() {
+                w.set_doc_surface_image(img);
+            }
+        }
+    }
+
+    fn save_active_note_to_disk(
+        app_weak: &slint::Weak<AppWindow>,
+        grimoire_arc: &Arc<Mutex<GrimoireManager>>,
+        editor_arc: &Arc<Mutex<EditorController>>,
+        tab_arc: &Arc<Mutex<TabManager>>,
+        dirty_since: &Arc<Mutex<Option<std::time::Instant>>>,
+    ) {
+        let snapshot = editor_arc.lock().ok().and_then(|ed| {
+            let p = ed.note_path.trim().to_string();
+            let is_md = p.ends_with(".md") || p.ends_with(".markdown");
+            if is_md {
+                Some((p, ed.content()))
+            } else {
+                None
+            }
+        });
+
+        let Some((rel_path, content)) = snapshot else {
+            return;
+        };
+
+        let saved = grimoire_arc
+            .lock()
+            .ok()
+            .and_then(|gm| gm.write_entry_text(&rel_path, &content).ok())
+            .is_some();
+
+        if saved {
+            if let Ok(mut ds) = dirty_since.lock() {
+                *ds = None;
+            }
+            if let Ok(mut tm) = tab_arc.lock() {
+                if let Some(tab) = tm.active_pane_mut().active_tab_mut() {
+                    if tab.path == rel_path {
+                        tab.is_modified = false;
+                    }
+                }
+                if let Some(w) = app_weak.upgrade() {
+                    let tabs = to_slint_tabs(tm.active_pane());
+                    w.set_tabs(ModelRc::new(VecModel::from(tabs)));
+                    w.set_sync_status("Salvo no disco".into());
+                }
+            }
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn open_vault_document(
+        rel_path: &str,
+        app_weak: &slint::Weak<AppWindow>,
+        state_arc: &Arc<Mutex<AppState>>,
+        tab_arc: &Arc<Mutex<TabManager>>,
+        editor_arc: &Arc<Mutex<EditorController>>,
+        canvas_arc: &Arc<Mutex<CanvasViewController>>,
+        graph_arc: &Arc<Mutex<GraphViewController>>,
+        grimoire_arc: &Arc<Mutex<GrimoireManager>>,
+        dirty_since: &Arc<Mutex<Option<std::time::Instant>>>,
+        active_grafo_rel: &Arc<Mutex<Option<String>>>,
+    ) {
+        // Salva a nota anterior caso haja alterações pendentes antes de trocar
+        let is_dirty = dirty_since.lock().ok().and_then(|d| *d).is_some();
+        if is_dirty {
+            save_active_note_to_disk(app_weak, grimoire_arc, editor_arc, tab_arc, dirty_since);
+        }
+
+        let note_str = rel_path.trim();
+        if note_str.is_empty() {
+            return;
+        }
+
+        let kind = gnosis_core::path::DocumentKind::from_path_str(note_str);
+        let is_membrane = kind.is_membrane();
+        let is_grafo = note_str.ends_with(".grafo");
+        let title = gnosis_app::tabs::clean_title_from_path(note_str)
+            .trim_end_matches(".grafo")
+            .to_string();
+
+        let disk_content = grimoire_arc
+            .lock()
+            .ok()
+            .and_then(|gm| gm.read_entry_text(note_str).ok())
+            .unwrap_or_default();
+
+        let mut icon_opt: Option<String> = None;
+        if let Ok(mut st) = state_arc.lock() {
+            st.select_note(note_str, &disk_content);
+            if !st.active_note_icon.is_empty() {
+                icon_opt = Some(st.active_note_icon.clone());
+            } else if is_membrane {
+                icon_opt = Some(kind.default_icon().to_string());
+            } else if is_grafo {
+                icon_opt = Some("🕸️".to_string());
+            }
+        }
+
+        if is_grafo {
+            if let Ok(gm) = grimoire_arc.lock() {
+                if let Some(active) = gm.active_grimoire() {
+                    let full_path = active.path.join(note_str);
+                    if let Ok(mut gc) = graph_arc.lock() {
+                        if let Err(e) = gc.load_from_grafo_file(&full_path) {
+                            tracing::warn!("Falha ao carregar grafo {}: {}", full_path.display(), e);
+                        }
+                    }
+                }
+            }
+            if let Ok(mut agr) = active_grafo_rel.lock() {
+                *agr = Some(note_str.to_string());
+            }
+        } else if is_membrane {
+            if let Ok(gm) = grimoire_arc.lock() {
+                if let Some(active) = gm.active_grimoire() {
+                    let full_path = active.path.join(note_str);
+                    if let Ok(mut cc) = canvas_arc.lock() {
+                        if let Err(e) = cc.load_from_file(&full_path) {
+                            tracing::warn!("Falha ao carregar membrana {}: {}", full_path.display(), e);
+                        }
+                    }
+                }
+            }
+        }
+
+        if let Ok(mut ed) = editor_arc.lock() {
+            ed.note_path = note_str.to_string();
+            ed.note_title = title.clone();
+            ed.set_content(&disk_content);
+        }
+
+        if let Ok(mut tm) = tab_arc.lock() {
+            tm.open_note_with_icon(note_str, &title, icon_opt.clone());
+            if let Some(w) = app_weak.upgrade() {
+                w.set_is_graph_view(is_grafo);
+                w.set_is_canvas_view(is_membrane);
+                w.set_active_note_title(title.as_str().into());
+                w.set_active_note_icon(icon_opt.as_deref().unwrap_or("").into());
+                w.set_active_note_content(disk_content.as_str().into());
+                w.set_can_go_back(tm.history.can_go_back());
+                w.set_can_go_forward(tm.history.can_go_forward());
+
+                let tabs = to_slint_tabs(tm.active_pane());
+                w.set_tabs(ModelRc::new(VecModel::from(tabs)));
+
+                if is_grafo {
+                    if let Ok(mut gc) = graph_arc.lock() {
+                        w.set_graph_nodes(ModelRc::new(VecModel::from(to_slint_graph_nodes(&gc.get_visual_nodes(400.0, 300.0)))));
+                        w.set_graph_edges(ModelRc::new(VecModel::from(to_slint_graph_edges(&gc.get_visual_edges(400.0, 300.0)))));
+                    }
+                } else if is_membrane {
+                    if let Ok(cc) = canvas_arc.lock() {
+                        let (nodes, edges) = cc.to_visual_models();
+                        w.set_canvas_nodes(ModelRc::new(VecModel::from(to_slint_canvas_nodes(&nodes))));
+                        w.set_canvas_edges(ModelRc::new(VecModel::from(to_slint_canvas_edges(&edges))));
+                        w.set_canvas_zoom_level(cc.zoom);
+                        w.set_canvas_node_count(cc.canvas_data.node_count() as i32);
+                        w.set_canvas_edge_count(cc.canvas_data.edge_count() as i32);
+                    }
+                } else if let Ok(ed) = editor_arc.lock() {
+                    let ast = to_slint_ast_blocks(&ed.generate_render_blocks());
+                    w.set_ast_blocks(ModelRc::new(VecModel::from(ast)));
+                    w.set_word_count(ed.word_count() as i32);
+                    w.set_char_count(ed.char_count() as i32);
+                }
+
+                if let Ok(st) = state_arc.lock() {
+                    let items = to_slint_tree(&st.visible_tree_items());
+                    w.set_file_tree(ModelRc::new(VecModel::from(items)));
+                }
+            }
+        }
+    }
+
+    // Render inicial do DocumentEditor contínuo + Callbacks de interação estilo Word
+    render_doc_surface(&app_weak, &doc_editor_arc, &theme_arc);
+
+    {
+        let app_weak = app_weak.clone();
+        let doc_editor_arc = Arc::clone(&doc_editor_arc);
+        let theme_arc = Arc::clone(&theme_arc);
+        app.on_doc_viewport_resized(move |w_px, h_px| {
+            if let Ok(mut doc) = doc_editor_arc.lock() {
+                doc.set_viewport(w_px, h_px);
+            }
+            render_doc_surface(&app_weak, &doc_editor_arc, &theme_arc);
+        });
+    }
+
+    {
+        let app_weak = app_weak.clone();
+        let doc_editor_arc = Arc::clone(&doc_editor_arc);
+        let theme_arc = Arc::clone(&theme_arc);
+        app.on_doc_pointer_down(move |x, y, shift| {
+            if let Ok(mut doc) = doc_editor_arc.lock() {
+                doc.handle_pointer_down(x, y, shift);
+            }
+            render_doc_surface(&app_weak, &doc_editor_arc, &theme_arc);
+        });
+    }
+
+    {
+        let app_weak = app_weak.clone();
+        let doc_editor_arc = Arc::clone(&doc_editor_arc);
+        let theme_arc = Arc::clone(&theme_arc);
+        app.on_doc_pointer_moved(move |x, y| {
+            if let Ok(mut doc) = doc_editor_arc.lock() {
+                doc.handle_pointer_move(x, y);
+            }
+            render_doc_surface(&app_weak, &doc_editor_arc, &theme_arc);
+        });
+    }
+
+    {
+        let app_weak = app_weak.clone();
+        let doc_editor_arc = Arc::clone(&doc_editor_arc);
+        let theme_arc = Arc::clone(&theme_arc);
+        app.on_doc_scrolled(move |delta_y| {
+            if let Ok(mut doc) = doc_editor_arc.lock() {
+                doc.scroll_by(delta_y);
+            }
+            render_doc_surface(&app_weak, &doc_editor_arc, &theme_arc);
+        });
+    }
+
+    {
+        let app_weak = app_weak.clone();
+        let doc_editor_arc = Arc::clone(&doc_editor_arc);
+        let theme_arc = Arc::clone(&theme_arc);
+        let editor_arc = Arc::clone(&editor_arc);
+        let state_arc = Arc::clone(&state_arc);
+        let tab_arc = Arc::clone(&tab_arc);
+        let dirty_since = Arc::clone(&dirty_since);
+
+        app.on_doc_key_pressed(move |key_text, ctrl, shift, alt| {
+            let outcome = if let Ok(mut doc) = doc_editor_arc.lock() {
+                doc.handle_key_event(key_text.as_str(), ctrl, shift, alt)
+            } else {
+                DocumentKeyOutcome::Ignored
+            };
+
+            let mut modified = false;
+            match outcome {
+                DocumentKeyOutcome::Modified => modified = true,
+                DocumentKeyOutcome::Copy(txt) => {
+                    let _ = runtime::copy_to_clipboard(&txt);
+                }
+                DocumentKeyOutcome::Cut(txt) => {
+                    let _ = runtime::copy_to_clipboard(&txt);
+                    modified = true;
+                }
+                DocumentKeyOutcome::PasteRequested => {
+                    if let Ok(pasted) = runtime::paste_from_clipboard() {
+                        if let Ok(mut doc) = doc_editor_arc.lock() {
+                            doc.insert_text(&pasted);
+                        }
+                        modified = true;
+                    }
+                }
+                DocumentKeyOutcome::CursorMoved => {}
+                DocumentKeyOutcome::Ignored => return,
+            }
+
+            if modified {
+                let full = doc_editor_arc
+                    .lock()
+                    .map(|d| d.text())
+                    .unwrap_or_default();
+                if let Ok(mut ed) = editor_arc.lock() {
+                    ed.set_content(&full);
+                    let words = ed.word_count();
+                    let chars = ed.char_count();
+                    if let Some(w) = app_weak.upgrade() {
+                        w.set_word_count(words as i32);
+                        w.set_char_count(chars as i32);
+                        w.set_active_note_content(full.as_str().into());
+                    }
+                }
+                if let Ok(mut st) = state_arc.lock() {
+                    st.active_note_content = full;
+                }
+                if let Ok(mut tm) = tab_arc.lock() {
+                    if let Some(tab) = tm.active_pane_mut().active_tab_mut() {
+                        tab.is_modified = true;
+                    }
+                    if let Some(w) = app_weak.upgrade() {
+                        w.set_tabs(ModelRc::new(VecModel::from(to_slint_tabs(tm.active_pane()))));
+                    }
+                }
+                if let Ok(mut ds) = dirty_since.lock() {
+                    *ds = Some(std::time::Instant::now());
+                }
+            }
+
+            render_doc_surface(&app_weak, &doc_editor_arc, &theme_arc);
+        });
+    }
+
+    // Timer de Auto-Save (grava no disco após ~900ms de inatividade na digitação)
+    let autosave_timer = slint::Timer::default();
+    {
+        let app_weak = app_weak.clone();
+        let grimoire_arc = Arc::clone(&grimoire_arc);
+        let editor_arc = Arc::clone(&editor_arc);
+        let tab_arc = Arc::clone(&tab_arc);
+        let dirty_since = Arc::clone(&dirty_since);
+        autosave_timer.start(
+            slint::TimerMode::Repeated,
+            std::time::Duration::from_millis(400),
+            move || {
+                let should_save = dirty_since
+                    .lock()
+                    .ok()
+                    .and_then(|d| *d)
+                    .map(|t| t.elapsed() >= std::time::Duration::from_millis(900))
+                    .unwrap_or(false);
+                if should_save {
+                    save_active_note_to_disk(
+                        &app_weak,
+                        &grimoire_arc,
+                        &editor_arc,
+                        &tab_arc,
+                        &dirty_since,
+                    );
+                }
+            },
+        );
+    }
 
 
     // Callback: Alternar Tema Místico em Tempo Real (Ctrl+Shift+T ou clique na StatusBar)
     {
         let app_weak = app_weak.clone();
         let theme_arc = Arc::clone(&theme_arc);
+        let doc_editor_arc = Arc::clone(&doc_editor_arc);
         app.on_cycle_theme(move || {
             if let Ok(mut tm) = theme_arc.lock() {
                 let next = tm.cycle_next().clone();
@@ -475,6 +833,7 @@ fn main() {
                     w.set_settings_theme_name(next.name.as_str().into());
                 }
             }
+            render_doc_surface(&app_weak, &doc_editor_arc, &theme_arc);
         });
     }
 
@@ -881,14 +1240,20 @@ fn main() {
         let app_weak = app_weak.clone();
         let graph_arc = Arc::clone(&graph_arc);
         let state_arc = Arc::clone(&state_arc);
+        let active_grafo_rel = Arc::clone(&active_grafo_rel);
         app.on_graph_save_grafo_requested(move || {
+            let target_rel = active_grafo_rel
+                .lock()
+                .ok()
+                .and_then(|g| g.clone())
+                .unwrap_or_else(|| "universo.grafo".to_string());
             if let Ok(gc) = graph_arc.lock() {
                 if let Ok(st) = state_arc.lock() {
-                    let path = std::path::PathBuf::from(&st.vault_path).join("universo.grafo");
+                    let path = std::path::PathBuf::from(&st.vault_path).join(&target_rel);
                     let _ = gc.save_to_grafo_file(&path);
                 }
                 if let Some(w) = app_weak.upgrade() {
-                    w.set_sync_status("Grafo salvo em universo.grafo".into());
+                    w.set_sync_status(format!("Grafo salvo em {target_rel}").into());
                 }
             }
         });
@@ -1327,6 +1692,7 @@ fn main() {
         let editor_arc = Arc::clone(&editor_arc);
         let tab_arc = Arc::clone(&tab_arc);
         let state_arc = Arc::clone(&state_arc);
+        let dirty_since = Arc::clone(&dirty_since);
         app.on_note_text_edited(move |new_text| {
             if let Ok(mut ed) = editor_arc.lock() {
                 ed.set_content(new_text.as_str());
@@ -1352,6 +1718,10 @@ fn main() {
                     w.set_tabs(ModelRc::new(VecModel::from(tabs)));
                 }
             }
+
+            if let Ok(mut ds) = dirty_since.lock() {
+                *ds = Some(std::time::Instant::now());
+            }
         });
     }
 
@@ -1360,10 +1730,15 @@ fn main() {
         let app_weak = app_weak.clone();
         let editor_arc = Arc::clone(&editor_arc);
         let state_arc = Arc::clone(&state_arc);
+        let grimoire_arc = Arc::clone(&grimoire_arc);
+        let tab_arc = Arc::clone(&tab_arc);
+        let dirty_since = Arc::clone(&dirty_since);
         app.on_task_checkbox_toggled(move |id| {
+            let mut changed = false;
             if let Ok(mut ed) = editor_arc.lock() {
                 ed.toggle_task_checkbox(id as usize);
                 let updated_content = ed.content();
+                changed = true;
                 if let Ok(mut st) = state_arc.lock() {
                     st.active_note_content = updated_content.clone();
                 }
@@ -1372,6 +1747,9 @@ fn main() {
                     w.set_active_note_content(updated_content.as_str().into());
                     w.set_ast_blocks(ModelRc::new(VecModel::from(ast)));
                 }
+            }
+            if changed {
+                save_active_note_to_disk(&app_weak, &grimoire_arc, &editor_arc, &tab_arc, &dirty_since);
             }
         });
     }
@@ -1396,11 +1774,16 @@ fn main() {
         let app_weak = app_weak.clone();
         let editor_arc = Arc::clone(&editor_arc);
         let state_arc = Arc::clone(&state_arc);
+        let grimoire_arc = Arc::clone(&grimoire_arc);
+        let tab_arc = Arc::clone(&tab_arc);
+        let dirty_since = Arc::clone(&dirty_since);
 
         app.on_math_applied(move |idx, new_formula| {
+            let mut changed = false;
             if let Ok(mut ed) = editor_arc.lock() {
                 ed.apply_math_edit(idx as usize, new_formula.as_str());
                 let updated_content = ed.content();
+                changed = true;
 
                 if let Ok(mut st) = state_arc.lock() {
                     st.active_note_content = updated_content.clone();
@@ -1411,6 +1794,9 @@ fn main() {
                     w.set_active_note_content(updated_content.as_str().into());
                     w.set_ast_blocks(ModelRc::new(VecModel::from(ast)));
                 }
+            }
+            if changed {
+                save_active_note_to_disk(&app_weak, &grimoire_arc, &editor_arc, &tab_arc, &dirty_since);
             }
         });
     }
@@ -1445,16 +1831,23 @@ fn main() {
         });
     }
 
-    // Callback: Aplicação de edição in-place de bloco Markdown
+    // Callback: Aplicação de edição in-place de bloco Markdown (Concluir)
     {
         let app_weak = app_weak.clone();
         let editor_arc = Arc::clone(&editor_arc);
         let state_arc = Arc::clone(&state_arc);
+        let grimoire_arc = Arc::clone(&grimoire_arc);
+        let tab_arc = Arc::clone(&tab_arc);
+        let dirty_since = Arc::clone(&dirty_since);
 
         app.on_block_applied(move |id, new_text| {
+            let mut changed = false;
             if let Ok(mut ed) = editor_arc.lock() {
                 ed.apply_block_edit(id as usize, new_text.as_str());
                 let updated_content = ed.content();
+                let words = ed.word_count();
+                let chars = ed.char_count();
+                changed = true;
 
                 if let Ok(mut st) = state_arc.lock() {
                     st.active_note_content = updated_content.clone();
@@ -1464,7 +1857,12 @@ fn main() {
                 if let Some(w) = app_weak.upgrade() {
                     w.set_active_note_content(updated_content.as_str().into());
                     w.set_ast_blocks(ModelRc::new(VecModel::from(ast)));
+                    w.set_word_count(words as i32);
+                    w.set_char_count(chars as i32);
                 }
+            }
+            if changed {
+                save_active_note_to_disk(&app_weak, &grimoire_arc, &editor_arc, &tab_arc, &dirty_since);
             }
         });
     }
@@ -1489,11 +1887,16 @@ fn main() {
         let app_weak = app_weak.clone();
         let editor_arc = Arc::clone(&editor_arc);
         let state_arc = Arc::clone(&state_arc);
+        let grimoire_arc = Arc::clone(&grimoire_arc);
+        let tab_arc = Arc::clone(&tab_arc);
+        let dirty_since = Arc::clone(&dirty_since);
 
         app.on_block_enter_pressed(move |id, current_text| {
+            let mut changed = false;
             if let Ok(mut ed) = editor_arc.lock() {
                 ed.split_or_insert_block_below(id as usize, current_text.as_str());
                 let updated_content = ed.content();
+                changed = true;
 
                 if let Ok(mut st) = state_arc.lock() {
                     st.active_note_content = updated_content.clone();
@@ -1505,6 +1908,9 @@ fn main() {
                     w.set_ast_blocks(ModelRc::new(VecModel::from(ast)));
                 }
             }
+            if changed {
+                save_active_note_to_disk(&app_weak, &grimoire_arc, &editor_arc, &tab_arc, &dirty_since);
+            }
         });
     }
 
@@ -1513,11 +1919,16 @@ fn main() {
         let app_weak = app_weak.clone();
         let editor_arc = Arc::clone(&editor_arc);
         let state_arc = Arc::clone(&state_arc);
+        let grimoire_arc = Arc::clone(&grimoire_arc);
+        let tab_arc = Arc::clone(&tab_arc);
+        let dirty_since = Arc::clone(&dirty_since);
 
         app.on_block_backspace_pressed(move |id| {
+            let mut changed = false;
             if let Ok(mut ed) = editor_arc.lock() {
                 ed.delete_empty_block_and_merge_previous(id as usize);
                 let updated_content = ed.content();
+                changed = true;
 
                 if let Ok(mut st) = state_arc.lock() {
                     st.active_note_content = updated_content.clone();
@@ -1528,6 +1939,9 @@ fn main() {
                     w.set_active_note_content(updated_content.as_str().into());
                     w.set_ast_blocks(ModelRc::new(VecModel::from(ast)));
                 }
+            }
+            if changed {
+                save_active_note_to_disk(&app_weak, &grimoire_arc, &editor_arc, &tab_arc, &dirty_since);
             }
         });
     }
@@ -1740,163 +2154,84 @@ fn main() {
         });
     }
 
-    // Callback: Selecionar nota na barra lateral
+    // Callback: Selecionar nota/membrana/grafo na barra lateral (leitura real do disco)
     {
         let app_weak = app_weak.clone();
         let state_arc = Arc::clone(&state_arc);
         let tab_arc = Arc::clone(&tab_arc);
         let editor_arc = Arc::clone(&editor_arc);
         let canvas_arc = Arc::clone(&canvas_arc);
+        let graph_arc = Arc::clone(&graph_arc);
         let grimoire_arc = Arc::clone(&grimoire_arc);
+        let dirty_since = Arc::clone(&dirty_since);
+        let active_grafo_rel = Arc::clone(&active_grafo_rel);
+        let doc_editor_arc = Arc::clone(&doc_editor_arc);
+        let theme_arc = Arc::clone(&theme_arc);
         app.on_note_selected(move |note_path| {
-            let note_str = note_path.as_str();
-            let kind = gnosis_core::path::DocumentKind::from_path_str(note_str);
-            let is_membrane = kind.is_membrane();
-            let file_name = note_str.rsplit('/').next().unwrap_or(note_str);
-            let title = if let Some(s) = file_name.strip_suffix(".canvas") {
-                s
-            } else if let Some(s) = file_name.strip_suffix(".membrana") {
-                s
-            } else if let Some(s) = file_name.strip_suffix(".md") {
-                s
-            } else if let Some(s) = file_name.strip_suffix(".markdown") {
-                s
-            } else {
-                file_name
-            };
-
-            let content = format!(
-                "# {}\n\nNota carregada com sucesso do Vault local.\n\n```rust\n// Código na nota {}\n```\n\n> [!NOTE]\n> Nota ativa pronta para edição ágil.",
-                title, note_str
+            open_vault_document(
+                note_path.as_str(),
+                &app_weak,
+                &state_arc,
+                &tab_arc,
+                &editor_arc,
+                &canvas_arc,
+                &graph_arc,
+                &grimoire_arc,
+                &dirty_since,
+                &active_grafo_rel,
             );
-
-            let mut icon_opt: Option<String> = None;
-            if let Ok(mut st) = state_arc.lock() {
-                st.select_note(note_str, &content);
-                if !st.active_note_icon.is_empty() {
-                    icon_opt = Some(st.active_note_icon.clone());
-                } else if is_membrane {
-                    icon_opt = Some(kind.default_icon().to_string());
+            if let Ok(ed) = editor_arc.lock() {
+                if let Ok(mut doc) = doc_editor_arc.lock() {
+                    doc.set_text(&ed.content());
                 }
             }
-
-            if is_membrane {
-                if let Ok(gm) = grimoire_arc.lock() {
-                    if let Some(active) = gm.active_grimoire() {
-                        let full_path = active.path.join(note_str);
-                        if let Ok(mut cc) = canvas_arc.lock() {
-                            if let Err(e) = cc.load_from_file(&full_path) {
-                                tracing::warn!("Falha ao carregar membrana {}: {}", full_path.display(), e);
-                            }
-                        }
-                    }
-                }
-            }
-
-            if let Ok(mut ed) = editor_arc.lock() {
-                ed.note_path = note_str.to_string();
-                ed.note_title = title.to_string();
-                ed.set_content(&content);
-            }
-
-            if let Ok(mut tm) = tab_arc.lock() {
-                tm.open_note_with_icon(note_str, title, icon_opt.clone());
-
-                if let Some(w) = app_weak.upgrade() {
-                    w.set_is_graph_view(false);
-                    w.set_is_canvas_view(is_membrane);
-                    w.set_active_note_title(title.into());
-                    w.set_active_note_icon(icon_opt.as_deref().unwrap_or("").into());
-                    w.set_active_note_content(content.as_str().into());
-                    w.set_can_go_back(tm.history.can_go_back());
-                    w.set_can_go_forward(tm.history.can_go_forward());
-
-                    let tabs = to_slint_tabs(tm.active_pane());
-                    w.set_tabs(ModelRc::new(VecModel::from(tabs)));
-
-                    if is_membrane {
-                        if let Ok(cc) = canvas_arc.lock() {
-                            let (nodes, edges) = cc.to_visual_models();
-                            w.set_canvas_nodes(ModelRc::new(VecModel::from(to_slint_canvas_nodes(&nodes))));
-                            w.set_canvas_edges(ModelRc::new(VecModel::from(to_slint_canvas_edges(&edges))));
-                            w.set_canvas_zoom_level(cc.zoom);
-                            w.set_canvas_node_count(cc.canvas_data.node_count() as i32);
-                            w.set_canvas_edge_count(cc.canvas_data.edge_count() as i32);
-                        }
-                    } else if let Ok(ed) = editor_arc.lock() {
-                        let ast = to_slint_ast_blocks(&ed.generate_render_blocks());
-                        w.set_ast_blocks(ModelRc::new(VecModel::from(ast)));
-                    }
-
-                    if let Ok(st) = state_arc.lock() {
-                        let items = to_slint_tree(&st.visible_tree_items());
-                        w.set_file_tree(ModelRc::new(VecModel::from(items)));
-                    }
-                }
-            }
+            render_doc_surface(&app_weak, &doc_editor_arc, &theme_arc);
         });
     }
 
-    // Callback: Selecionar aba no topo
+    // Callback: Selecionar aba no topo (leitura real do disco)
     {
         let app_weak = app_weak.clone();
+        let state_arc = Arc::clone(&state_arc);
         let tab_arc = Arc::clone(&tab_arc);
         let editor_arc = Arc::clone(&editor_arc);
         let canvas_arc = Arc::clone(&canvas_arc);
+        let graph_arc = Arc::clone(&graph_arc);
         let grimoire_arc = Arc::clone(&grimoire_arc);
+        let dirty_since = Arc::clone(&dirty_since);
+        let active_grafo_rel = Arc::clone(&active_grafo_rel);
+        let doc_editor_arc = Arc::clone(&doc_editor_arc);
+        let theme_arc = Arc::clone(&theme_arc);
         app.on_tab_selected(move |idx| {
-            if let Ok(mut tm) = tab_arc.lock() {
+            let selected_path = if let Ok(mut tm) = tab_arc.lock() {
                 if tm.active_pane_mut().select_tab(idx as usize) {
-                    if let Some(tab) = tm.active_pane().active_tab() {
-                        let title = tab.title.clone();
-                        let path = tab.path.clone();
-                        let is_membrane = tab.is_membrane();
-                        let icon_str = tab.icon.clone().unwrap_or_default();
-                        let content = format!("# {}\n\nConteúdo restaurado da aba `{}`.", title, path);
+                    tm.active_pane().active_tab().map(|t| t.path.clone())
+                } else {
+                    None
+                }
+            } else {
+                None
+            };
 
-                        if is_membrane {
-                            if let Ok(gm) = grimoire_arc.lock() {
-                                if let Some(active) = gm.active_grimoire() {
-                                    let full_path = active.path.join(&path);
-                                    if let Ok(mut cc) = canvas_arc.lock() {
-                                        if let Err(e) = cc.load_from_file(&full_path) {
-                                            tracing::warn!("Falha ao carregar membrana {}: {}", full_path.display(), e);
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        if let Ok(mut ed) = editor_arc.lock() {
-                            ed.set_content(&content);
-                        }
-
-                        if let Some(w) = app_weak.upgrade() {
-                            w.set_is_graph_view(false);
-                            w.set_is_canvas_view(is_membrane);
-                            w.set_active_note_title(title.as_str().into());
-                            w.set_active_note_icon(icon_str.as_str().into());
-                            w.set_active_note_content(content.as_str().into());
-
-                            let tabs = to_slint_tabs(tm.active_pane());
-                            w.set_tabs(ModelRc::new(VecModel::from(tabs)));
-
-                            if is_membrane {
-                                if let Ok(cc) = canvas_arc.lock() {
-                                    let (nodes, edges) = cc.to_visual_models();
-                                    w.set_canvas_nodes(ModelRc::new(VecModel::from(to_slint_canvas_nodes(&nodes))));
-                                    w.set_canvas_edges(ModelRc::new(VecModel::from(to_slint_canvas_edges(&edges))));
-                                    w.set_canvas_zoom_level(cc.zoom);
-                                    w.set_canvas_node_count(cc.canvas_data.node_count() as i32);
-                                    w.set_canvas_edge_count(cc.canvas_data.edge_count() as i32);
-                                }
-                            } else if let Ok(ed) = editor_arc.lock() {
-                                let ast = to_slint_ast_blocks(&ed.generate_render_blocks());
-                                w.set_ast_blocks(ModelRc::new(VecModel::from(ast)));
-                            }
-                        }
+            if let Some(path) = selected_path {
+                open_vault_document(
+                    &path,
+                    &app_weak,
+                    &state_arc,
+                    &tab_arc,
+                    &editor_arc,
+                    &canvas_arc,
+                    &graph_arc,
+                    &grimoire_arc,
+                    &dirty_since,
+                    &active_grafo_rel,
+                );
+                if let Ok(ed) = editor_arc.lock() {
+                    if let Ok(mut doc) = doc_editor_arc.lock() {
+                        doc.set_text(&ed.content());
                     }
                 }
+                render_doc_surface(&app_weak, &doc_editor_arc, &theme_arc);
             }
         });
     }
@@ -2136,6 +2471,9 @@ fn main() {
         let graph_arc = Arc::clone(&graph_arc);
         let canvas_arc = Arc::clone(&canvas_arc);
         let theme_arc = Arc::clone(&theme_arc);
+        let grimoire_arc = Arc::clone(&grimoire_arc);
+        let dirty_since = Arc::clone(&dirty_since);
+        let active_grafo_rel = Arc::clone(&active_grafo_rel);
 
         app.on_quick_item_clicked(move |idx| {
             let mut action_opt = None;
@@ -2149,52 +2487,18 @@ fn main() {
             if let Some((item_type, action_id, _title)) = action_opt {
                 match item_type {
                     gnosis_app::QuickItemType::Note => {
-                        let path = action_id;
-                        let is_membrane = gnosis_core::path::DocumentKind::from_path_str(&path).is_membrane();
-                        let default_icon = if is_membrane { Some("📜".to_string()) } else { None };
-                        let clean_title = gnosis_app::tabs::clean_title_from_path(&path);
-                        let content = format!(
-                            "# {}\n\nNota aberta via Quick Switcher instantâneo.\n\n```rust\n// Código na nota {}\n```\n\n> [!NOTE]\n> Nota ativa pronta para edição ágil.",
-                            clean_title, path
+                        open_vault_document(
+                            &action_id,
+                            &app_weak,
+                            &state_arc,
+                            &tab_arc,
+                            &editor_arc,
+                            &canvas_arc,
+                            &graph_arc,
+                            &grimoire_arc,
+                            &dirty_since,
+                            &active_grafo_rel,
                         );
-
-                        if let Ok(mut tm) = tab_arc.lock() {
-                            tm.open_note_with_icon(&path, clean_title, default_icon);
-                        }
-
-                        if let Ok(mut st) = state_arc.lock() {
-                            st.select_note(&path, &content);
-                        }
-
-                        if let Ok(mut ed) = editor_arc.lock() {
-                            ed.set_content(&content);
-                        }
-
-                        if let Some(w) = app_weak.upgrade() {
-                            w.set_is_graph_view(false);
-                            w.set_is_canvas_view(is_membrane);
-                            w.set_active_note_title(clean_title.into());
-                            w.set_active_note_content(content.as_str().into());
-
-                            if let Ok(tm) = tab_arc.lock() {
-                                let tabs = to_slint_tabs(tm.active_pane());
-                                w.set_tabs(ModelRc::new(VecModel::from(tabs)));
-                            }
-
-                            if is_membrane {
-                                if let Ok(cc) = canvas_arc.lock() {
-                                    let (nodes, edges) = cc.to_visual_models();
-                                    w.set_canvas_nodes(ModelRc::new(VecModel::from(to_slint_canvas_nodes(&nodes))));
-                                    w.set_canvas_edges(ModelRc::new(VecModel::from(to_slint_canvas_edges(&edges))));
-                                    w.set_canvas_zoom_level(cc.zoom);
-                                    w.set_canvas_node_count(cc.canvas_data.node_count() as i32);
-                                    w.set_canvas_edge_count(cc.canvas_data.edge_count() as i32);
-                                }
-                            } else if let Ok(ed) = editor_arc.lock() {
-                                let ast = to_slint_ast_blocks(&ed.generate_render_blocks());
-                                w.set_ast_blocks(ModelRc::new(VecModel::from(ast)));
-                            }
-                        }
                     }
                     gnosis_app::QuickItemType::Command => {
                         info!("Executando comando da paleta: {}", action_id);
@@ -2937,6 +3241,9 @@ fn main() {
         let editor_arc = Arc::clone(&editor_arc);
         let canvas_arc = Arc::clone(&canvas_arc);
         let settings_arc = Arc::clone(&settings_arc);
+        let dirty_since = Arc::clone(&dirty_since);
+        let doc_editor_arc = Arc::clone(&doc_editor_arc);
+        let theme_arc = Arc::clone(&theme_arc);
 
         app.on_context_menu_item_selected(move |action_id| {
             if let Some(w) = app_weak.upgrade() {
@@ -3197,6 +3504,7 @@ fn main() {
                             w.set_word_count(words as i32);
                             w.set_char_count(chars as i32);
                         }
+                        save_active_note_to_disk(&app_weak, &grimoire_arc, &editor_arc, &tab_arc, &dirty_since);
                     }
                 }
                 "ed_paste"
@@ -3269,6 +3577,11 @@ fn main() {
                             w.set_word_count(words as i32);
                             w.set_char_count(chars as i32);
                         }
+                        if let Ok(mut doc) = doc_editor_arc.lock() {
+                            doc.set_text(&full);
+                        }
+                        render_doc_surface(&app_weak, &doc_editor_arc, &theme_arc);
+                        save_active_note_to_disk(&app_weak, &grimoire_arc, &editor_arc, &tab_arc, &dirty_since);
                     }
                 }
 

@@ -324,6 +324,46 @@ impl AppState {
         Ok(entry.is_folder)
     }
 
+    /// Popula a lista de entradas a partir de arquivos e pastas reais escaneadas do disco.
+    pub fn populate_from_scan<I1, S1, I2, S2>(&mut self, files: I1, folders: I2)
+    where
+        I1: IntoIterator<Item = S1>,
+        S1: AsRef<str>,
+        I2: IntoIterator<Item = S2>,
+        S2: AsRef<str>,
+    {
+        for f_ref in folders {
+            let folder_str = f_ref.as_ref().trim_matches('/');
+            if folder_str.is_empty() {
+                continue;
+            }
+            let segments: Vec<&str> = folder_str.split('/').collect();
+            let mut curr = String::new();
+            for seg in segments {
+                let parent = if curr.is_empty() {
+                    None
+                } else {
+                    Some(curr.clone())
+                };
+                if !curr.is_empty() {
+                    curr.push('/');
+                }
+                curr.push_str(seg);
+
+                self.add_entry(FileTreeEntry {
+                    id: curr.clone(),
+                    name: seg.to_string(),
+                    path: curr.clone(),
+                    is_folder: true,
+                    parent_path: parent,
+                    icon: None,
+                });
+            }
+        }
+
+        self.populate_from_paths(files);
+    }
+
     /// Popula a lista de entradas a partir de caminhos relativos de arquivos (ex: "Notas/Estudos/Rust.md").
     pub fn populate_from_paths<I, S>(&mut self, paths: I)
     where
